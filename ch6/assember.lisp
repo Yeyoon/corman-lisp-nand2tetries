@@ -1,4 +1,13 @@
 ;; using multiple value return 
+(defun L_COMMAND? (type)
+    (eq type 'L_COMMAND))
+
+(defun A_COMMAND? (type)
+    (eq type 'A_COMMAND))
+
+(defun C_COMMAND? (type)
+    (eq type 'C_COMMAND))
+
 (defun demul-type-content (command)
     "Return (Type content) of this command.
     Only in first function call."
