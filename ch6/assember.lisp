@@ -98,9 +98,7 @@
 
 (defun get-address (symbol)
     "Get the address of the symbol from *symbol-table*."
-    (progn
-        (format T "get symbol from symbol table : ~a:~a~%" symbol (contain? symbol))
-    (contain? symbol)))
+    (contain? symbol))
 
 
 
@@ -119,6 +117,7 @@
         (and (isdigital? (char command 0))
             (digital? (subseq command 1)))))
         
+(defvar *debug* NIL)
 
 (defun assember-c-command (command)
     "Trans the c-command to binary bits."
@@ -211,7 +210,9 @@
 
 (defun debug-write-codes (codes stream)
     (progn
-        (format T "wirting codes:[~a]~%" codes)
+        (when *debug*
+            (format T "wirting codes:[~a]~%" codes)
+            (setf *debug* NIL))
         (write-line codes stream)))
 
 (defun second-pass (commands file-name)
@@ -220,7 +221,7 @@
     (with-open-file (stream file-name :direction :output :if-exists
                      :supersede)
       (dolist (c commands)
-        (format T "CURRENT PROCESS COMMAND : ~a~%" c)
+        ;(format T "CURRENT PROCESS COMMAND : ~a~%" c)
         (multiple-value-bind (type command) (demul-type-content c)
           (cond ((l_command? type) (format t "L_COMMAND : ~a~%" c))
                 ((a_command? type)
@@ -229,9 +230,12 @@
                      (let ((addr (get-address command)))
                        (if addr
                            (write-line (assember-a-command (write-to-string addr)) stream)
-                           (progn (add-entry command ram-index)
-                                  (setf ram-index (+ 1 ram-index))
+                           (progn 
+                                  (format T "command ~a ==> add new symbol ~a to ram index ~a~%" c command ram-index)
+                                  (setf *debug* 1) 
+                                  (add-entry command ram-index)
                                   (debug-write-codes (assember-a-command (write-to-string ram-index)) stream)
+                                  (setf ram-index (+ 1 ram-index))
                                             )))))
                 ((c_command? type)
                  (debug-write-codes (assember-c-command command) stream))
