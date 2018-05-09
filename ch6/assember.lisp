@@ -32,7 +32,7 @@
                     (setq dest (subseq command 0 index=)))
                 (when index2
                     (setq jump (subseq command (+ 1 index2))))
-                (setq index= (or (+ 1 index=) 0))
+                (setq index= (if index= (+ 1 index=) 0))
                 (setq index2 (or index2 (length command)))
                 (values dest (subseq command index= index2) jump)))))
 
@@ -85,7 +85,7 @@
       ("D&M" . "1000000")
       ("D|A" . "0010101")))
 
-(defvar *symbol-table* (make-hash-table))
+(defvar *symbol-table* (make-hash-table :test 'equal))
 
 (defun contain? (symbol)
     "Check if *symbol-table* contains the symbol."
@@ -97,7 +97,9 @@
 
 (defun get-address (symbol)
     "Get the address of the symbol from *symbol-table*."
-    (contain? symbol))
+    (progn
+        (format T "get symbol from symbol table : ~a:~a~%" symbol (contain? symbol))
+    (contain? symbol)))
 
 
 
@@ -203,7 +205,13 @@
             (multiple-value-bind (type command) (demul-type-content c)
                 (if (eq type 'L_COMMAND)
                     (add-entry command rom-index)
-                    (setf rom-index (+ 1 rom-index))))))
+                    (setf rom-index (+ 1 rom-index)))))))
+    
+
+(defun debug-write-codes (codes stream)
+    (progn
+        (format T "wirting codes:[~a]~%" codes)
+        (write-line codes stream)))
 
 (defun second-pass (commands file-name)
   "Produce the binary strings."
@@ -211,39 +219,69 @@
     (with-open-file (stream file-name :direction :output :if-exists
                      :supersede)
       (dolist (c commands)
+        (format T "CURRENT PROCESS COMMAND : ~a~%" c)
         (multiple-value-bind (type command) (demul-type-content c)
           (cond ((l_command? type) (format t "L_COMMAND : ~a~%" c))
                 ((a_command? type)
                  (if (digital? command)
-                     (write-line (assember-a-command command) stream)
+                     (debug-write-codes (assember-a-command command) stream)
                      (let ((addr (get-address command)))
                        (if addr
                            (write-line (assember-a-command (write-to-string addr)) stream)
                            (progn (add-entry command ram-index)
                                   (setf ram-index (+ 1 ram-index))
-                                  (write-line (assember-a-command (write-to-string ram-index))
-                                              stream))))))
+                                  (debug-write-codes (assember-a-command (write-to-string ram-index)) stream)
+                                            )))))
                 ((c_command? type)
-                 (write-line (assember-c-command command) stream))
+                 (debug-write-codes (assember-c-command command) stream))
                 (t (format t "Error unknown command : ~a~%" c))))))))
 
 
 ;; this is the main routing for the program
 
+(defun init-symbol-table ()
+    "Add the SPECIAL FORM to symbol table."
+    (progn
+        (add-entry "SP" 0)
+        (add-entry "LCL" 1)
+        (add-entry "ARG" 2)
+        (add-entry "THIS" 3)
+        (add-entry "THAT" 4)
+        (add-entry "R0" 0)
+        (add-entry "R1" 1)
+        (add-entry "R2" 2)
+        (add-entry "R3" 3)
+        (add-entry "R4" 4)
+        (add-entry "R5" 5)
+        (add-entry "R6" 6)
+        (add-entry "R7" 7)
+        (add-entry "R8" 8)
+        (add-entry "R9" 9)
+        (add-entry "R10" 10)
+        (add-entry "R11" 11)
+        (add-entry "R12" 12)
+        (add-entry "R13" 13)
+        (add-entry "R14" 14)
+        (add-entry "R15" 15)
+        (add-entry "SCREEN" 16384)
+        (add-entry "KBD" 24576)))
+
 (defun assember (&optional filename)
     "This is the toplevel funciton of this program."
-    (let ((source-file (or filename (read))))
-        (when source-file
-            (format T "source-file is ~a~%" source-file)
-            (let* ((p (position-if (lambda (ch) (char= ch #\.)) source-file))
-                   (dest-file-name (concatenate 'string (subseq source-file 0 p) ".hack"))
-                   (commands (read-all-lines source-file)))
-                (progn
-                   (format T "start first pass commands : ~a~%" commands)
-                   (first-pass commands)
-                   (format T "after first-pass~%")
-                   (second-pass commands dest-file-name))
-                   (format T "Process End~%")))))
+    (progn
+        (init-symbol-table)
+        (let ((source-file (or filename (read))))
+            (when source-file
+                (format T "source-file is ~a~%" source-file)
+                (let* ((p (position-if (lambda (ch) (char= ch #\.)) source-file))
+                       (dest-file-name (concatenate 'string (subseq source-file 0 p) ".hack"))
+                       (commands (read-all-lines source-file)))
+                    (progn
+                       (format T "start first pass commands : ~a~%" commands)
+                       (first-pass commands)
+                       (format T "after first-pass~%")
+                       (second-pass commands dest-file-name))
+                       (format T "Process End~%"))))))
                 
                             
                 
