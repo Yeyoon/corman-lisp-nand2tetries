@@ -1,26 +1,16 @@
-(defun L_COMMAND? (command)
-    (eq command 'L_COMMAND))
-
-(defun C_COMMAND? (command)
-    (eq command 'C_COMMAND))
-
-(defun A_COMMAND? (command)
-    (eq command 'A_COMMAND))
-
-(defun get-command-type (command)
+;; using multiple value return 
+(defun demul-type-content (command)
+    "Return (Type content) of this command.
+    Only in first function call."
     (let ((first-char (char command 0)))
-        (cond ((eq first-char #\@) 'A_COMMAND)
-            ((eq first-char (code-char 40)) 'L_COMMAND)
-            (T 'C_COMMAND))))
-
-
-(defun symbol (command)
-    "Return the symbol mnomic of the command.
-    Only if the  command is A_COMMAND or L_COMMAND."
-    (let ((ctype (get-command-type command)))
-        (cond ((A_COMMAND? ctype)(subseq command 1))
-            ((L_COMMAND? ctype) (subseq command 1 (- (length command) 1)))
-            (T NIL))))
+        (cond ((eq first-char #\@) (values 'A_COMMAND (subseq command 1)))
+              ((eq first-char (code-char 40)) 
+                (values 'L_COMMAND 
+                        (subseq command 1 
+                            (let ((end (- (length command) 1)))
+                                (when (>= end 0) end)))))
+              (T (values 'C_COMMAND command)))))
+                                                                                                
             
 (defun dest-comp-jump (command)
     "Return the dest,comp and jump field of the command.
@@ -201,37 +191,39 @@
     "Build the hash table during the first pass."
     (let ((rom-index 0))
         (dolist (c commands)
-                (if (L_COMMAND? c)
-                    (add-entry (symbol c) rom-index)
+            (multiple-value-bind (type command) (demul-type-content c)
+                (if (eq type 'L_COMMAND)
+                    (add-entry command rom-index)
                     (setf rom-index (+ 1 rom-index))))))
 
 (defun second-pass (commands file-name)
-    "Produce the binary strings."
-    (let ((ram-index 16))
-        (with-open-file (stream file-name :direction :output :if-exists :supersede)
-            (dolist (c commands)
-                (cond ((L_COMMAND? (get-command-type c)) (format T "L_COMMAND : ~a~%" c))
-                      ((A_COMMAND? (get-command-type c))
-                        (let ((sym (symbol c)))
-                            (if (digital? sym)
-                                (write-line (assember-a-command sym) stream)
-                                (let ((addr (get-address sym)))
-                                    (if addr
-                                        (write-line (assember-a-command (write-to-string addr)) stream)
-                                        (progn
-                                            (add-entry sym ram-index)
-                                            (setf ram-index (+ 1 ram-index))
-                                            (write-line (assember-a-command (write-to-string ram-index)) stream)))))))
-                       ((C_COMMAND? (get-command-type c))
-                        (write-line (assember-c-command c) stream))
-                       (T (format T  "Error unknown command : ~a~%" c)))))))
+  "Produce the binary strings."
+  (let ((ram-index 16))
+    (with-open-file (stream file-name :direction :output :if-exists
+                     :supersede)
+      (dolist (c commands)
+        (multiple-value-bind (type command) (demul-type-content c)
+          (cond ((l_command? type) (format t "L_COMMAND : ~a~%" c))
+                ((a_command? type)
+                 (if (digital? command)
+                     (write-line (assember-a-command command) stream)
+                     (let ((addr (get-address command)))
+                       (if addr
+                           (write-line (assember-a-command (write-to-string addr)) stream)
+                           (progn (add-entry command ram-index)
+                                  (setf ram-index (+ 1 ram-index))
+                                  (write-line (assember-a-command (write-to-string ram-index))
+                                              stream))))))
+                ((c_command? type)
+                 (write-line (assember-c-command command) stream))
+                (t (format t "Error unknown command : ~a~%" c))))))))
 
 
 ;; this is the main routing for the program
 
-(defun assember ()
+(defun assember (&optional filename)
     "This is the toplevel funciton of this program."
-    (let ((source-file (read)))
+    (let ((source-file (or filename (read))))
         (when source-file
             (format T "source-file is ~a~%" source-file)
             (let* ((p (position-if (lambda (ch) (char= ch #\.)) source-file))
