@@ -21,16 +21,7 @@
 (defun remove-comment (line)
     "Return NIL if the line is a comment.
     Remove the comments from line."
-    (let* ((sline (string-trim " " line))
-           (index (search "//" sline)))
-        (if index
-            (let ((r (subseq sline 0 index)))
-                (if (string= r "")
-                    NIL
-                    r))
-            (if (string= sline "")
-                NIL
-                sline))))
+    (subseq line 0 (search "//" line)))
 
 ;; This funciton is copyed from http://cl-cookbook.readthedocs.io/zh_CN/latest/strings.html
 (defun replace-all (string part replacement &key (test #'char=))
@@ -57,7 +48,7 @@
 
 (defun read-all-lines (file-name)
     "Read and remove all comments from file-name."
-    (let ((r NIL))
+    (let ((r NIL) (rom-index 0))
         (progn
             (with-open-file (stream file-name :direction :input :if-does-not-exist nil)
                 (when stream
@@ -65,6 +56,8 @@
                         while line do 
                             (let ((l (remove-useless line)))
                              (when l
+                                   ;; do first pass here
+                                   (setf rom-index (first-process-label l rom-index))
                                    (setf r (append r (list l))))))))
              r)))
 
@@ -175,6 +168,14 @@
                 (setq index= (if index= (+ 1 index=) 0))
                 (values dest (subseq command index= index2) jump)))))
 
+(defun first-process-label (label-command rom-index)
+    (multiple-value-bind (type command) (demul-type-content label-command)
+        (if (L_COMMAND? type)
+            (progn
+                (add-entry command rom-index)
+                rom-index)
+            (+ 1 rom-index))))
+
 (defvar *dest-table*
     '((NIL . "000")
       ("M" . "001")
@@ -246,15 +247,6 @@
                     (write-string "0" out))
                 (write-string str out))))) 
     
-(defun first-pass (commands)
-    "Build the hash table during the first pass."
-    (let ((rom-index 0))
-        (dolist (c commands)
-            (multiple-value-bind (type command) (demul-type-content c)
-                (if (eq type 'L_COMMAND)
-                    (add-entry command rom-index)
-                    (setf rom-index (+ 1 rom-index)))))))
-    
 (defun second-pass (commands file-name)
   "Produce the binary strings."
   (let ((ram-index 16))
@@ -298,7 +290,6 @@
                        (commands (read-all-lines source-file)))
                     (progn
                        (format T "start first pass commands : ~a~%" commands)
-                       (first-pass commands)
                        (format T "after first-pass~%")
                        (second-pass commands dest-file-name))
                        (format T "Process End~%"))))))
