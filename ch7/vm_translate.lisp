@@ -6,6 +6,35 @@
 ;; vm translator
 (defvar *stack-top* 256)
 
+(defvar *segment-table* 
+    '(("local" 1)
+      ("argument" 2)
+      ("this" 3)
+      ("that" 4)
+      ("pointer" 3)
+      ("temp" 5)
+      ("static" 16)
+      ("constant" "constant")))
+
+(defun demul-command (command)
+    "Demul the command to (TYPE ARG1 ARG2).
+    If do not have the field, just set it to NIL."
+    (let* ((a (split command))
+           (type (first a)))
+        (cond ((C_PUSH? type) (valuse 'C_PUSH (get-segment (second a)) (parse-integer (third a))))
+              ((C_POP? type) (values 'C_POP (get-segment (second a)) (parse-integer (third a))))
+              ((C_LABEL? type) (values 'C_LABEL (second a) NIL))
+              ((C_GOTO? type) (values 'C_GOTO (second a) NIL))
+              ((C_IF? type) (values 'C_IF (second a) NIL))
+              ((C_FUNCTION? type) (values 'C_FUNCTION (second a) NIL))
+              ((C_RETURN? type) (values 'C_RETURN NIL NIL))
+              ((C_CALL? type) (values 'C_CALL (second a) NIL))
+              (T (values 'C_ARITHMETIC NIL NIL)))))
+
+
+
+
+
 (defun gen-push-asm (segment index)
     (with-output-to-string (out)
         (write-line (concatenate 'string "@" (write-to-string (+ segment index))))
