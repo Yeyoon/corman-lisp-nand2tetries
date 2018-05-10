@@ -4,7 +4,7 @@
 ;;
 (defun get-value-by-key (key table)
     (dolist (var table)
-        (when (equal var key)
+        (when (equal (first var) key)
             (return (cdr var)))))
 
 ;; if the command is string of digitals return the number
@@ -125,6 +125,8 @@
             (format T "wirting codes:[~a]~%" codes)
             (setf *debug* NIL))
         (write-line codes stream)))
+
+
 ;;
 ;; DEBUG tools END
 ;;===========================================================================
@@ -159,14 +161,10 @@
     Only if the command is C_COMMAND. dest=com;jump"
     (let ((index= (position-if (lambda (ch) (eq ch #\=)) command))
           (index2 (position-if (lambda (ch) (eq ch #\;)) command)))
-        (let ((dest NIL) (jump NIL))
-            (progn
-                (when index=
-                    (setq dest (subseq command 0 index=)))
-                (when index2
-                    (setq jump (subseq command (+ 1 index2))))
-                (setq index= (if index= (+ 1 index=) 0))
-                (values dest (subseq command index= index2) jump)))))
+        (values (and index= (subseq command 0 index=))
+                (subseq command (or (and index= (+ 1 index=)) 0) index2)
+                (and index2 (subseq command (+ 1 index2))))))
+
 
 (defun first-process-label (label-command rom-index)
     (multiple-value-bind (type command) (demul-type-content label-command)
