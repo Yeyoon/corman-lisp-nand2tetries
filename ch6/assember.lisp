@@ -7,23 +7,16 @@
         (when (equal var key)
             (return (cdr var)))))
 
-(defun isdigital? (ch)
-    (position-if (lambda (c) (char= c ch)) "0123456789"))
-
+;; if the command is string of digitals return the number
+;; otherwise return NIL
 (defun digital? (command)
     "Return if the command is a string contains all numbers."
-    (if (string= command "")
-        T
-        (and (isdigital? (char command 0))
-            (digital? (subseq command 1)))))
+    (handler-case (parse-integer command)
+        (error NIL)))
 
 (defun command-string (command)
     "Trans the interger to binary string."
-    (reverse (with-output-to-string (out)
-         (do ((v (parse-integer command) (floor v 2)))
-             ((<= v 0))
-                (multiple-value-bind (a b) (floor v 2)
-                    (write-string (write-to-string b) out))))))
+   (format NIL "~B" (parse-integer command)))
 
 (defun remove-comment (line)
     "Return NIL if the line is a comment.
