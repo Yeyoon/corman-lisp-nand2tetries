@@ -1,4 +1,151 @@
-;; using multiple value return 
+;;
+;; Tools utilies START
+;; ===================================================================
+;;
+(defun get-value-by-key (key table)
+    (dolist (var table)
+        (when (equal var key)
+            (return (cdr var)))))
+
+(defun isdigital? (ch)
+    (position-if (lambda (c) (char= c ch)) "0123456789"))
+
+(defun digital? (command)
+    "Return if the command is a string contains all numbers."
+    (if (string= command "")
+        T
+        (and (isdigital? (char command 0))
+            (digital? (subseq command 1)))))
+
+(defun command-string (command)
+    "Trans the interger to binary string."
+    (reverse (with-output-to-string (out)
+         (do ((v (parse-integer command) (floor v 2)))
+             ((<= v 0))
+                (multiple-value-bind (a b) (floor v 2)
+                    (write-string (write-to-string b) out))))))
+
+(defun remove-comment (line)
+    "Return NIL if the line is a comment.
+    Remove the comments from line."
+    (let* ((sline (string-trim " " line))
+           (index (search "//" sline)))
+        (if index
+            (let ((r (subseq sline 0 index)))
+                (if (string= r "")
+                    NIL
+                    r))
+            (if (string= sline "")
+                NIL
+                sline))))
+
+;; This funciton is copyed from http://cl-cookbook.readthedocs.io/zh_CN/latest/strings.html
+(defun replace-all (string part replacement &key (test #'char=))
+    "Returns a new string in which all the occurences of the part
+    is replaced with replacement."
+    (with-output-to-string (out)
+        (loop with part-length = (length part)
+            for old-pos = 0 then (+ pos part-length)
+            for pos = (search part string :start2 old-pos :test test)
+            do (write-string string out :start old-pos :end (or pos (length string)))
+            when pos do (write-string replacement out)
+            while pos)))
+
+(defun remove-white-space (line)
+    "Remove the wihte space in line."
+    (replace-all line " " ""))
+
+(defun remove-useless (line)
+    "Remove the useless parts from line.
+    the comments and the white spaces."
+    (let ((r (remove-white-space (remove-comment line))))
+        (when (and (string/= r "") (string/= r " "))
+            r)))
+
+(defun read-all-lines (file-name)
+    "Read and remove all comments from file-name."
+    (let ((r NIL))
+        (progn
+            (with-open-file (stream file-name :direction :input :if-does-not-exist nil)
+                (when stream
+                    (loop for line = (read-line stream nil)
+                        while line do 
+                            (let ((l (remove-useless line)))
+                             (when l
+                                   (setf r (append r (list l))))))))
+             r)))
+
+;; Tools Utilities End
+;;=======================================================================
+
+
+;;========================================================================
+;; DEFINE  symbol table module START
+;;
+(defun init-symbol-table ()
+    "Add the SPECIAL FORM to symbol table."
+    (progn
+        (add-entry "SP" 0)
+        (add-entry "LCL" 1)
+        (add-entry "ARG" 2)
+        (add-entry "THIS" 3)
+        (add-entry "THAT" 4)
+        (add-entry "R0" 0)
+        (add-entry "R1" 1)
+        (add-entry "R2" 2)
+        (add-entry "R3" 3)
+        (add-entry "R4" 4)
+        (add-entry "R5" 5)
+        (add-entry "R6" 6)
+        (add-entry "R7" 7)
+        (add-entry "R8" 8)
+        (add-entry "R9" 9)
+        (add-entry "R10" 10)
+        (add-entry "R11" 11)
+        (add-entry "R12" 12)
+        (add-entry "R13" 13)
+        (add-entry "R14" 14)
+        (add-entry "R15" 15)
+        (add-entry "SCREEN" 16384)
+        (add-entry "KBD" 24576)))
+
+(defvar *symbol-table* (make-hash-table :test 'equal))
+
+(defun contain? (symbol)
+    "Check if *symbol-table* contains the symbol."
+    (gethash symbol *symbol-table*))
+
+(defun add-entry (symbol val)
+    "Add the pair (symbol val) to the *symbol-table*."
+    (setf (gethash symbol *symbol-table*) val))
+
+(defun get-address (symbol)
+    "Get the address of the symbol from *symbol-table*."
+    (contain? symbol))
+
+;;
+;; DEFINE symbol module table END
+;;===========================================================================
+
+
+;;
+;; DEBUG tools START
+;;===========================================================================
+(defvar *debug* NIL)
+
+(defun debug-write-codes (codes stream)
+    (progn
+        (when *debug*
+            (format T "wirting codes:[~a]~%" codes)
+            (setf *debug* NIL))
+        (write-line codes stream)))
+;;
+;; DEBUG tools END
+;;===========================================================================
+
+;; ==========================================================================
+;; CORE parser parts
+;;===========================================================================
 (defun L_COMMAND? (type)
     (eq type 'L_COMMAND))
 
@@ -33,7 +180,6 @@
                 (when index2
                     (setq jump (subseq command (+ 1 index2))))
                 (setq index= (if index= (+ 1 index=) 0))
-                (setq index2 (or index2 (length command)))
                 (values dest (subseq command index= index2) jump)))))
 
 (defvar *dest-table*
@@ -86,39 +232,6 @@
       ("D|A" . "0010101")
       ("D|M" . "1010101")))
 
-(defvar *symbol-table* (make-hash-table :test 'equal))
-
-(defun contain? (symbol)
-    "Check if *symbol-table* contains the symbol."
-    (gethash symbol *symbol-table*))
-
-(defun add-entry (symbol val)
-    "Add the pair (symbol val) to the *symbol-table*."
-    (setf (gethash symbol *symbol-table*) val))
-
-(defun get-address (symbol)
-    "Get the address of the symbol from *symbol-table*."
-    (contain? symbol))
-
-
-
-(defun get-value-by-key (key table)
-    (dolist (var table)
-        (when (or (eq key (first var)) (string= key (first var)))
-            (return (cdr var)))))
-
-(defun isdigital? (ch)
-    (position-if (lambda (c) (char= c ch)) "0123456789"))
-
-(defun digital? (command)
-    "Return if the command is a string contains all numbers."
-    (if (string= command "")
-        T
-        (and (isdigital? (char command 0))
-            (digital? (subseq command 1)))))
-        
-(defvar *debug* NIL)
-
 (defun assember-c-command (command)
     "Trans the c-command to binary bits."
     (multiple-value-bind (dest comp jump) (dest-comp-jump command)
@@ -127,13 +240,7 @@
             (get-value-by-key dest *dest-table*)
             (get-value-by-key jump *jump-table*))))
 
-(defun command-string (command)
-    "Trans the interger to binary string."
-    (reverse (with-output-to-string (out)
-         (do ((v (parse-integer command) (floor v 2)))
-             ((<= v 0))
-                (multiple-value-bind (a b) (floor v 2)
-                    (write-string (write-to-string b) out))))))
+
 
 (defun assember-a-command (command)
     "Trans the a-command to binnary bits string."
@@ -146,58 +253,6 @@
                     (write-string "0" out))
                 (write-string str out))))) 
     
-(defun remove-comment (line)
-    "Return NIL if the line is a comment.
-    Remove the comments from line."
-    (let* ((sline (string-trim " " line))
-           (index (search "//" sline)))
-        (if index
-            (let ((r (subseq sline 0 index)))
-                (if (string= r "")
-                    NIL
-                    r))
-            (if (string= sline "")
-                NIL
-                sline))))
-
-;; This funciton is copyed from http://cl-cookbook.readthedocs.io/zh_CN/latest/strings.html
-(defun replace-all (string part replacement &key (test #'char=))
-    "Returns a new string in which all the occurences of the part
-    is replaced with replacement."
-    (with-output-to-string (out)
-        (loop with part-length = (length part)
-            for old-pos = 0 then (+ pos part-length)
-            for pos = (search part string :start2 old-pos :test test)
-            do (write-string string out :start old-pos :end (or pos (length string)))
-            when pos do (write-string replacement out)
-            while pos)))
-
-(defun remove-white-space (line)
-    "Remove the wihte space in line."
-    (replace-all line " " ""))
-
-(defun remove-useless (line)
-    "Remove the useless parts from line.
-    the comments and the white spaces."
-    (let ((r (remove-white-space (remove-comment line))))
-        (when (and (string/= r "") (string/= r " "))
-            r)))
-
-(defun read-all-lines (file-name)
-    "Read and remove all comments from file-name."
-    (let ((r NIL))
-        (progn
-            (with-open-file (stream file-name :direction :input :if-does-not-exist nil)
-                (when stream
-                    (loop for line = (read-line stream nil)
-                        while line do 
-                            (let ((l (remove-useless line)))
-                             (when l
-                                   (setf r (append r (list l))))))))
-             r)))
-
-
-
 (defun first-pass (commands)
     "Build the hash table during the first pass."
     (let ((rom-index 0))
@@ -207,14 +262,6 @@
                     (add-entry command rom-index)
                     (setf rom-index (+ 1 rom-index)))))))
     
-
-(defun debug-write-codes (codes stream)
-    (progn
-        (when *debug*
-            (format T "wirting codes:[~a]~%" codes)
-            (setf *debug* NIL))
-        (write-line codes stream)))
-
 (defun second-pass (commands file-name)
   "Produce the binary strings."
   (let ((ram-index 16))
@@ -240,37 +287,12 @@
                 ((c_command? type)
                  (debug-write-codes (assember-c-command command) stream))
                 (t (format t "Error unknown command : ~a~%" c))))))))
+;;
+;; CORE parser parts END
+;;
 
-
+;;==========================================================================================
 ;; this is the main routing for the program
-
-(defun init-symbol-table ()
-    "Add the SPECIAL FORM to symbol table."
-    (progn
-        (add-entry "SP" 0)
-        (add-entry "LCL" 1)
-        (add-entry "ARG" 2)
-        (add-entry "THIS" 3)
-        (add-entry "THAT" 4)
-        (add-entry "R0" 0)
-        (add-entry "R1" 1)
-        (add-entry "R2" 2)
-        (add-entry "R3" 3)
-        (add-entry "R4" 4)
-        (add-entry "R5" 5)
-        (add-entry "R6" 6)
-        (add-entry "R7" 7)
-        (add-entry "R8" 8)
-        (add-entry "R9" 9)
-        (add-entry "R10" 10)
-        (add-entry "R11" 11)
-        (add-entry "R12" 12)
-        (add-entry "R13" 13)
-        (add-entry "R14" 14)
-        (add-entry "R15" 15)
-        (add-entry "SCREEN" 16384)
-        (add-entry "KBD" 24576)))
-
 (defun assember (&optional filename)
     "This is the toplevel funciton of this program."
     (progn
