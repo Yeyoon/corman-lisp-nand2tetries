@@ -4,77 +4,217 @@
 ;; version: 1.0.0
 ;;
 ;; vm translator
+;;
+;; using R6 for ARG1 
+;; using R7 for ARG2
+
+(defun remove-comment (line)
+    "Return NIL if the line is a comment.
+    Remove the comments from line."
+    (subseq line 0 (search "//" line)))
+
+(defun remove-useless (line)
+    "Remove the useless parts from line.
+    the comments and the white spaces."
+    (let ((r (string-trim " " (remove-comment line))))
+        (when (and (string/= r "") (string/= r " "))
+            r)))
+
 (defvar *stack-top* 256)
 
 (defvar *segment-table* 
-    '(("local" 1)
-      ("argument" 2)
-      ("this" 3)
-      ("that" 4)
-      ("pointer" 3)
-      ("temp" 5)
+    '(("local" LCL)
+      ("argument" ARG)
+      ("this" THIS)
+      ("that" THAT)
+      ("pointer" R3)
+      ("temp" R5)
       ("static" 16)
-      ("constant" "constant")))
+      ("constant" NIL)))
+
+(defun get-seg (segment)
+    (dolist (var *segment-table*)
+        (when (string= segment (first var))
+            (return (second var)))))
+    
+
+(defun split (str &optional delimiter)
+    "Split string by delimiter."
+    (let ((string (string-trim " " str)))
+        (if (string= string "")
+            NIL
+            (let ((index (search  (or delimiter " ") string)))
+            (if index
+                (append (list (subseq string 0 index)) (split (subseq string (+ 1 index)) delimiter))
+                (list string))))))
+
+(defun C_PUSH? (type)
+    (string= "push" type))
+
+(defun C_POP? (type)
+    (string= "pop" type))
+
+(defun C_LABEL? (type)
+    (string= "label" type))
+
+(defun C_GOTO? (type)
+    (string= "goto" type))
+
+(defun C_IF? (type)
+    (string= "if-goto" type))
+
+(defun C_FUNCTION? (type)
+    (string= "function" type))
+
+(defun C_RETURN? (type)
+    (string= "return" type))
+
+(defun C_CALL? (type)
+    (string= "call" type))
 
 (defun demul-command (command)
     "Demul the command to (TYPE ARG1 ARG2).
     If do not have the field, just set it to NIL."
-    (let* ((a (split command))
-           (type (first a)))
-        (cond ((C_PUSH? type) (valuse 'C_PUSH (get-segment (second a)) (parse-integer (third a))))
-              ((C_POP? type) (values 'C_POP (get-segment (second a)) (parse-integer (third a))))
-              ((C_LABEL? type) (values 'C_LABEL (second a) NIL))
-              ((C_GOTO? type) (values 'C_GOTO (second a) NIL))
-              ((C_IF? type) (values 'C_IF (second a) NIL))
-              ((C_FUNCTION? type) (values 'C_FUNCTION (second a) NIL))
-              ((C_RETURN? type) (values 'C_RETURN NIL NIL))
-              ((C_CALL? type) (values 'C_CALL (second a) NIL))
-              (T (values 'C_ARITHMETIC NIL NIL)))))
+    (let ((a (split command)))
+        (destructuring-bind (type arg1 arg2) a
+            (values type arg1 arg2))))
+            
 
+;; gen the A address asm
+;; segment : string
+;; index   : string
+(defun gen-a-asm (segment index)
+    (let ((seg (get-seg segment)))
+        (with-output-to-string (out)
+            (write-line (concatenate 'string "@" seg) out)
+            (write-line "D=M" out)
+            (write-line (concatenate 'string "@" index) out)
+            (write-line "AD=D+A" out))))
 
-
-
+;; gen the constant asm
+;; val : string
+(defun gen-constant-asm (val)
+    (with-output-to-string (out)
+        (write-line (concatenate 'string "@" val))
+        (write-line "D=A")))
+        
+(defun constant? (segment)
+    (string= "constant" segment))
 
 (defun gen-push-asm (segment index)
     (with-output-to-string (out)
-        (write-line (concatenate 'string "@" (write-to-string (+ segment index))))
-        (write-line "D=M")
-        (write-line (concatenate 'string "@" (write-to-string *stack-top*)))
-        (setf *stack-top* (+ 1 *stack-top*))
-        (write-string "M=D")))
+        (if (constant? segment)
+            (write-line (gen-constant-asm index) out)
+            (progn
+                (write-line (gen-a-asm segment index) out)
+                (write-line "D=M" out)))
+        (gen-push-from-register-asm "D")))
 
+(defun gen-push-from-register-asm (reg)
+    (with-output-to-string (out)
+        (write-line (concatenate 'string "@" (write-to-string *stack-top*)) out)
+        (setf *stack-top* (+ 1 *stack-top*))
+        (write-line (concatenate 'string "M=" reg) out)))
+
+;; using R6 for temp using
 (defun gen-pop-asm (segment index)
     (with-output-to-string (out)
-        (setf *statck-top* (- *stack-top* 1))
-        (write-line (concatenate 'string "@" (write-to-string *stack-top*)))
-        (write-line "D=M")
-        (write-line (concatenate 'string "@" (write-to-string (+ segment index))))
-        (write-string "M=D")))
+        (setf *stack-top* (- *stack-top* 1))
+        (write-line (gen-a-asm segment index) out)
+        (write-line "D=A" out)
+        (write-line "@R6" out)
+        (write-line "M=D" out)        
+        (write-line (concatenate 'string "@" (write-to-string *stack-top*)) out)
+        (write-line "D=M" out)
+        (write-line "@R6" out)
+        (write-line "A=M" out)
+        (write-line "M=D" out)))
 
 (defun gen-normal-asm (op)
-    (format T "noraml operation op : ~a~%" op))
+    (cond ((add? op) (gen-add-asm))
+          ((sub? op) (gen-sub-asm))
+          ((neg? op) (gen-neg-asm))
+          ((gt? op) (gen-gt-asm))
+          ((lt? op) (gen-lt-asm))
+          ((and? op) (gen-and-asm))
+          ((or? op) (gen-or-asm))
+          ((not? op) (gen-not-asm))
+          (T (format T "unknonwn noraml operation op : ~a~%" op))))
+
+(defun add? (op)
+    (string= "add" op))
+
+(defun gen-pop-to-addr-asm (addr)
+    (with-output-to-string (out)
+        (setf *stack-top* (- *stack-top* 1))
+        (write-line (concatenate 'string "@" (write-to-string *stack-top*)) out)
+        (write-line "D=M" out)
+        (write-line (concatenate 'string "@" addr) out)
+        (write-line "M=D" out)))
+
+(defun gen-pop-to-register-asm (reg)
+    (with-output-to-string (out)
+        (setf *stack-top* (- *stack-top* 1))
+        (write-line (concatenate 'string "@" (write-to-string *stack-top*)) out)
+        (write-line (concatenate 'string reg "=M") out)))
+
+(defun gen-set-addr-to-a-asm (addr)
+    "This function is used to gen asm such as:
+    A <------ addr."
+    (with-output-to-string (out)
+        (write-line (concatenate 'string "@" addr) out)))
+    
+;; using R6 for a
+;; using D for b  
+;; for a + b  
+(defun gen-add-asm ()
+    (with-output-to-string (out)
+        (write-string (gen-pop-to-addr-asm "R6") out)
+        (write-string (gen-pop-to-register-asm "D") out) 
+        (write-string (gen-set-addr-to-a-asm "R6") out)
+        (write-line "D=D+M" out)
+        (write-string (gen-push-from-register-asm "D") out)))
 
 (defun genasm (op &rest args)
     "The basic function to use gen asm codes."
-    (cond ((push? op) (gen-push-asm (first args) (second args)))
-          ((pop? op) (gen-pop-asm (first args) (second args)))
+    (cond ((c_push? op) (gen-push-asm (first args) (second args)))
+          ((c_pop? op) (gen-pop-asm (first args) (second args)))
           (T (gen-normal-asm op))))
           
 
-(defun statck-op (op segment-or-var &optional index)
-    "The Stack push/pop implementation.
-    op: push/pop
-    segment-or-var: push :static,local,argument,this,that,constant or pointer
-                    pop  : variable
-    index : the index of the segment."
-    (let ((top 0))
-        (if (string= op "push")
-            (progn
-                (genasm 'push segment-or-var index top)
-                (setf top (+ 1 top)))
-            (progn
-                (setf top (- top 1))
-                (genasm 'pop segment-or-var top)))))
+(defun read-all-commands (filename)
+    (let ((r NIL))
+        (progn
+            (with-open-file (stream filename :direction :input :if-does-not-exist nil)
+                (when stream
+                    (loop for line = (read-line stream nil)
+                        while line do
+                            (let ((l (remove-useless line)))
+                                (when l
+                                    (setf r (append r (list l))))))))
+            r)))
+                
+ 
+(defun build-output-filename (filename)
+    (let ((index (position-if #'(lambda (ch) (char= ch #\.)) filename)))
+        (concatenate 'string (subseq filename 0 index) ".hack")))       
+
+;;
+;;=====================================================================
+;;The interface for processing
+;;
+(defun vm-translator (&optional filename)
+    (let* ((f (or filename (read)))
+          (commands (read-all-commands f))
+          (of (build-output-filename f)))
+        (with-open-file (stream of :direction :output :if-exists :supersede)
+            (dolist (var commands)
+                (fresh-line stream)
+                (write-line "// gen for vm command : " stream)
+                (write-string (concatenate 'string "// " (string-trim "\n" var)) stream)
+                (multiple-value-bind (type arg1 arg2) (demul-command var)
+                    (write-string (genasm type arg1 arg2) stream))
+                (terpri stream)))))
                 
         
     
