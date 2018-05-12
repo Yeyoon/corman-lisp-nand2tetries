@@ -94,10 +94,13 @@
 (defun gen-a-asm (segment index)
     (let ((seg (get-seg segment)))
         (with-output-to-string (out)
-            (write-line (concatenate 'string "@" seg) out)
-            (write-line "D=M" out)
-            (write-line (concatenate 'string "@" index) out)
-            (write-line "AD=D+A" out))))
+            (cond ((string= segment "temp") (write-line (concatenate 'string "@" (write-to-string (+ (parse-integer index) 5))) out))
+                 ((string= segment "pointer") (write-line (concatenate 'string "@" (write-to-string (+ (parse-integer index) 3))) out))
+                 (T (progn
+                        (write-line (concatenate 'string "@" seg) out)
+                        (write-line "D=M" out)
+                        (write-line (concatenate 'string "@" index) out)
+                        (write-line "AD=D+A" out)))))))
 
 ;; gen the constant asm
 ;; val : string
@@ -134,6 +137,7 @@
 ;; using R6 for temp using
 (defun gen-pop-asm (segment index)
     (with-output-to-string (out)
+        (write-line (concatenate 'string "// pop " segment " " index) out)
         (write-string (gen-a-asm segment index) out)
         (write-line "D=A" out)
         (write-line "@R6" out)
