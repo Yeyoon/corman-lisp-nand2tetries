@@ -20,7 +20,15 @@
         (when (and (string/= r "") (string/= r " "))
             r)))
 
+(defun set-stack-top-asm ()
+    (with-output-to-string (out)
+        (write-line "@SP" out)
+        (write-line (concatenate 'string "M=" (write-to-string *statck-top*)))))
+
 (defvar *stack-top* 256)
+
+(defun init-stack (stream)
+    (write-line (set-stack-top-asm) stream))
 
 (defvar *segment-table* 
     '(("local" LCL)
@@ -95,32 +103,36 @@
 ;; val : string
 (defun gen-constant-asm (val)
     (with-output-to-string (out)
-        (write-line (concatenate 'string "@" val))
-        (write-line "D=A")))
+        (write-line (concatenate 'string "@" val) out)
+        (write-line "D=A" out)))
         
 (defun constant? (segment)
     (string= "constant" segment))
 
 (defun gen-push-asm (segment index)
     (with-output-to-string (out)
+        (write-line (concatenate 'string "// push " segment " " index ) out)
         (if (constant? segment)
             (write-line (gen-constant-asm index) out)
             (progn
                 (write-line (gen-a-asm segment index) out)
                 (write-line "D=M" out)))
-        (gen-push-from-register-asm "D")))
+        (write-string (gen-push-from-register-asm "D") out)))
 
 (defun gen-push-from-register-asm (reg)
     (with-output-to-string (out)
         (write-line (concatenate 'string "@" (write-to-string *stack-top*)) out)
         (setf *stack-top* (+ 1 *stack-top*))
+        (write-string (set-top-stack-asm) out)
+        (write-line (set-stack-top-asm) out)
         (write-line (concatenate 'string "M=" reg) out)))
 
 ;; using R6 for temp using
 (defun gen-pop-asm (segment index)
     (with-output-to-string (out)
         (setf *stack-top* (- *stack-top* 1))
-        (write-line (gen-a-asm segment index) out)
+        (write-string (set-stack-top-asm) out)
+        (write-string (gen-a-asm segment index) out)
         (write-line "D=A" out)
         (write-line "@R6" out)
         (write-line "M=D" out)        
@@ -134,6 +146,7 @@
     (cond ((add? op) (gen-add-asm))
           ((sub? op) (gen-sub-asm))
           ((neg? op) (gen-neg-asm))
+          ((eq? op) (gen-eq-asm))
           ((gt? op) (gen-gt-asm))
           ((lt? op) (gen-lt-asm))
           ((and? op) (gen-and-asm))
@@ -141,20 +154,34 @@
           ((not? op) (gen-not-asm))
           (T (format T "unknonwn noraml operation op : ~a~%" op))))
 
-(defun add? (op)
-    (string= "add" op))
+(defun add? (op)(string= "add" op))
+(defun sub? (op)(string= "sub" op))
+(defun neg? (op)(string= "neg" op))
+(defun eq? (op) (string= "eq" op))
+(defun gt? (op)(string= "gt" op))
+(defun lt? (op) (string= "lt" op))
+(defun and? (op) (string= "and" op))
+(defun or? (op) (string= "or" op))
+(defun not? (op) (string= "not" op))
+
+(defvar *true* -1)
+(defvar *false* 0)
+(defvar *inner-label-cnt* 0)
 
 (defun gen-pop-to-addr-asm (addr)
     (with-output-to-string (out)
         (setf *stack-top* (- *stack-top* 1))
+        (write-string (set-stack-top-asm) out)
         (write-line (concatenate 'string "@" (write-to-string *stack-top*)) out)
         (write-line "D=M" out)
         (write-line (concatenate 'string "@" addr) out)
         (write-line "M=D" out)))
 
+
 (defun gen-pop-to-register-asm (reg)
     (with-output-to-string (out)
         (setf *stack-top* (- *stack-top* 1))
+        (write-string (set-stack-top-asm) out)
         (write-line (concatenate 'string "@" (write-to-string *stack-top*)) out)
         (write-line (concatenate 'string reg "=M") out)))
 
@@ -174,6 +201,66 @@
         (write-string (gen-set-addr-to-a-asm "R6") out)
         (write-line "D=D+M" out)
         (write-string (gen-push-from-register-asm "D") out)))
+
+(defun gen-sub-asm ()
+    (with-output-to-string (out)
+        (write-string (gen-pop-to-addr-asm "R6") out)
+        (write-string (gen-pop-to-register-asm "D") out)
+        (write-string (gen-set-addr-to-a-asm "R6") out)
+        (write-line "D=D-M" out)
+        (write-string (gen-push-from-register-asm "D") out)))
+
+(defun get-label (&optional new)
+    (progn
+        (when new
+            (setf *inner-label-cnt* (+ 1 *inner-label-cnt*)))
+        (concatenate 'string ".inner_label_" (write-to-string (- *inner-label-cnt* 1)))))
+
+(defun gen-set-statck-top-asm (value)
+    (with-output-to-string (out)
+        (write-line (concatenate 'string "@" (write-to-string (- *stack-top* 1))) out)
+        (write-line (concatenate 'string "M=" value) out)))
+        
+
+(defun gen-boolean-asm (jmp-asm-code)
+    (let ((new-label (get-label 1)))
+        (with-output-to-string (out)
+            (write-string (gen-pop-to-addr-asm "R6") out)
+            (write-string (gen-pop-to-register-asm "D") out)
+            (write-string (gen-set-addr-to-a-asm "R6") out)
+            (write-line "D=D-M" out)
+            (write-string (gen-push-from-register-asm "-1") out)
+            (write-line (concatenate 'string "@" new-label) out)
+            (write-line (concatenate 'string "D;" jmp-asm-code) out)
+            (write-string (gen-set-stack-top-asm "0") out)
+            (write-line (concatenate 'string "(" new-label ")") out))))
+     
+(defun gen-eq-asm () (gen-boolean-asm "JEQ"))
+(defun gen-gt-asm () (gen-boolean-asm "JGT"))
+(defun gen-lt-asm () (gen-boolean-asm "JLT"))
+
+
+        
+(defun gen-neg-asm ()
+    (with-output-to-string (out)
+        (write-string (gen-pop-to-register-asm "D") out)
+        (write-string (gen-push-from-register-asm "-D") out)))
+
+(defun gen-logic-asm (logic-op)
+    (with-output-to-string (out)
+        (write-string (gen-pop-to-addr-asm "R6") out)
+        (write-string (gen-pop-to-register-asm "D") out)
+        (write-string (gen-set-addr-to-a-asm "R6") out)
+        (write-line (concatenate 'string "D=D" logic-op "M") out)
+        (write-string (gen-push-from-register-asm "D") out)))
+
+(defun gen-and-asm () (gen-logic-asm "&"))
+(defun gen-or-asm () (gen-logic-asm "|"))
+(defun gen-not-asm ()
+    (with-output-to-string (out)
+        (write-string (gen-pop-to-register-asm "D") out)
+        (write-string (gen-push-from-register-asm "!D") out)))
+      
 
 (defun genasm (op &rest args)
     "The basic function to use gen asm codes."
@@ -197,7 +284,7 @@
  
 (defun build-output-filename (filename)
     (let ((index (position-if #'(lambda (ch) (char= ch #\.)) filename)))
-        (concatenate 'string (subseq filename 0 index) ".hack")))       
+        (concatenate 'string (subseq filename 0 index) ".asm")))       
 
 ;;
 ;;=====================================================================
@@ -208,13 +295,13 @@
           (commands (read-all-commands f))
           (of (build-output-filename f)))
         (with-open-file (stream of :direction :output :if-exists :supersede)
+            (init-stack stream)
             (dolist (var commands)
-                (fresh-line stream)
-                (write-line "// gen for vm command : " stream)
-                (write-string (concatenate 'string "// " (string-trim "\n" var)) stream)
+                ;;(fresh-line stream)
+                ;;(write-line "// gen for vm command : " stream)
+                ;;(write-string (concatenate 'string "// " (string-trim "\n" var)) stream)
                 (multiple-value-bind (type arg1 arg2) (demul-command var)
-                    (write-string (genasm type arg1 arg2) stream))
-                (terpri stream)))))
+                    (write-string (genasm type arg1 arg2) stream))))))
                 
         
     
