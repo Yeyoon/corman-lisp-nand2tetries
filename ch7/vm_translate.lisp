@@ -23,7 +23,7 @@
 (defun set-stack-top-asm ()
     (with-output-to-string (out)
         (write-line "@SP" out)
-        (write-line (concatenate 'string "M=" (write-to-string *statck-top*)))))
+        (write-line (concatenate 'string "M=" (write-to-string *stack-top*)) out)))
 
 (defvar *stack-top* 256)
 
@@ -123,7 +123,7 @@
     (with-output-to-string (out)
         (write-line (concatenate 'string "@" (write-to-string *stack-top*)) out)
         (setf *stack-top* (+ 1 *stack-top*))
-        (write-string (set-top-stack-asm) out)
+        (write-string (set-stack-top-asm) out)
         (write-line (set-stack-top-asm) out)
         (write-line (concatenate 'string "M=" reg) out)))
 
