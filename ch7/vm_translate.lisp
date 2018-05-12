@@ -31,13 +31,13 @@
     (write-line (set-stack-top-asm) stream))
 
 (defvar *segment-table* 
-    '(("local" LCL)
-      ("argument" ARG)
-      ("this" THIS)
-      ("that" THAT)
-      ("pointer" R3)
-      ("temp" R5)
-      ("static" 16)
+    '(("local" "LCL")
+      ("argument" "ARG")
+      ("this" "THIS")
+      ("that" "THAT")
+      ("pointer" "R3")
+      ("temp" "R5")
+      ("static" "16")
       ("constant" NIL)))
 
 (defun get-seg (segment)
@@ -261,10 +261,10 @@
         (write-string (gen-push-from-register-asm "!D") out)))
       
 
-(defun genasm (op &rest args)
+(defun genasm (op arg1 arg2)
     "The basic function to use gen asm codes."
-    (cond ((c_push? op) (gen-push-asm (first args) (second args)))
-          ((c_pop? op) (gen-pop-asm (first args) (second args)))
+    (cond ((c_push? op) (gen-push-asm arg1 arg2))
+          ((c_pop? op) (gen-pop-asm arg1 arg2))
           (T (gen-normal-asm op))))
           
 
