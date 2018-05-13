@@ -201,9 +201,11 @@
 ;;
 (defun gen-2-args-asm ()
     (with-output-to-string (out)
-        (write-string (gen-pop-to-addr-asm "R6") out)
         (write-string (gen-pop-to-register-asm "D") out)
-        (write-string (gen-set-addr-to-a-asm "R6") out)))
+        (write-line "@SP" out)
+         (write-line "M=M-1" out)
+         (write-line "@SP" out)
+         (write-line "A=M" out)))
 
 ;; using R6 for a
 ;; using D for b  
@@ -217,7 +219,7 @@
 (defun gen-sub-asm ()
     (with-output-to-string (out)
         (write-string (gen-2-args-asm) out)
-        (write-line "D=D-M" out)
+        (write-line "D=M-D" out)
         (write-string (gen-push-from-register-asm "D") out)))
 
 (defun get-label (&optional new)
@@ -232,7 +234,7 @@
     (let ((new-label (get-label 1)))
         (with-output-to-string (out)
             (write-string (gen-2-args-asm) out)
-            (write-line "D=D-M" out)
+            (write-line "D=M-D" out)
             (write-string (gen-push-from-register-asm "-1") out)
             (write-line (concatenate 'string "@" new-label) out)
             (write-line (concatenate 'string "D;" jmp-asm-code) out)
@@ -254,7 +256,7 @@
 (defun gen-logic-asm (logic-op)
     (with-output-to-string (out)
         (write-string (gen-2-args-asm) out)
-        (write-line (concatenate 'string "D=D" logic-op "M") out)
+        (write-line (concatenate 'string "D=M" logic-op "D") out)
         (write-string (gen-push-from-register-asm "D") out)))
 
 (defun gen-and-asm () (gen-logic-asm "&"))
