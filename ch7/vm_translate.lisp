@@ -19,6 +19,14 @@
     (let ((r (string-trim " " (remove-comment line))))
         (when (and (string/= r "") (string/= r " "))
             r)))
+(defun flatten (lst)
+  (labels ((rflatten (lst1 acc)
+             (dolist (el lst1)
+               (if (listp el)
+                   (setf acc (rflatten el acc))
+                   (push el acc)))
+             acc))
+    (reverse (rflatten lst nil))))
 
 (defvar *segment-table* 
     '(("local" "LCL")
@@ -67,6 +75,9 @@
 (defun label? (op) (string= "label" op))
 (defun if-goto? (op) (string= "if-goto" op))
 (defun goto? (op) (string= "goto" op))
+(defun function? (op) (string= "function" op))
+(defun call? (op) (string= "call" op))
+(defun return? (op) (string= "return" op))
 
 (defvar *true* -1)
 (defvar *false* 0)
@@ -164,7 +175,49 @@
 (defun gen-if-goto-asm (label) 
     (list "@SP" "A=M-1" "D=M" "@SP" "M=M-1" (concatenate 'string "@" (build-label label)) "D;JNE"))
 (defun gen-goto-asm (label)
-    (list (concatenate 'string "@" (build-label label)) "0;JMP"))
+    (list (concatenate 'string "@" label) "0;JMP"))
+
+(defun gen-function-asm (function-name args-num)
+    (when function-name
+        (setf *current-function-name* function-name)
+        (let ((local-instructions  (loop for x from 0 to (parse-integer args-num)
+                for y = (gen-push-asm "constant" "0")
+                collect y)))
+            (flatten (append (list (concatenate 'string "(" function-name ")")) local-instructions)))))
+
+(defun gen-call-asm (function-name args-num)
+    (when function-name
+        (flatten
+            (append 
+                (list (concatenate 'string "@" (build-label "returnAddress")) "D=A")
+                (assember-push-segment-asm)
+                (list "@LCL" "D=M")
+                (assember-push-segment-asm)
+                (list "@ARG" "D=M")
+                (assember-push-segment-asm)
+                (list "@THIS" "D=M")
+                (assember-push-segment-asm)
+                (list "@THAT" "D=M")
+                (assmeber-push-segment-asm)
+                (list (concatenate 'string "D=" (write-to-string (+ 5 (parse-integer args-num))))
+                      "@SP" "D=M-D" "@ARG" "M=D")
+                (list "@SP" "D=M" "@LCL" "M=D")
+                (gen-goto-asm function-name)
+                (list (concatenate 'string "(" (build-label "returnAddress") ")"))))))
+
+(defun gen-return-asm ()
+    (flatten
+        (append
+            (list "@LCL" "D=M" "@R6" "M=D") ;; R6 is for frame
+            (list "@5" "D=A" "@R6" "A=M-D" "D=M" "@R7" "M=D") ;; R7 is for retAddr
+            (gen-pop-asm "argument" "0") ;; *ARG = pop
+            (list "@ARG" "D=A" "@SP" "M=D+1")
+            (list "@R6" "M=M-1" "A=M" "D=M" "@THAT" "M=D")
+            (list "@R6" "M=M-1" "A=M" "D=M" "@THIS" "M=D")
+            (list "@R6" "M=M-1" "A=M" "D=M" "@ARG" "M=D")
+            (list "@R6" "M=M-1" "A=M" "D=M" "@LCL" "M=D")
+            (list "@R7" "A=M" "0;JMP"))))
+
  
 ;; gen the A address asm
 ;; segment : string
@@ -200,6 +253,9 @@
           ((label? op) (gen-label-asm arg1))
           ((if-goto? op) (gen-if-goto-asm arg1))
           ((goto? op) (gen-goto-asm arg1))
+          ((function? op) (gen-function-asm arg1 arg2))
+          ((call? op) (gen-call-asm arg1 arg2))
+          ((return? op) (gen-return-asm))
           (T (gen-normal-asm op))))
           
 
