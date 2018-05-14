@@ -77,80 +77,6 @@
         (destructuring-bind (type arg1 arg2) a
             (values type arg1 arg2))))
             
-
-;; gen the A address asm
-;; segment : string
-;; index   : string
-(defun gen-a-asm (segment index)
-    (let ((seg (get-seg segment)))
-        (with-output-to-string (out)
-            (cond ((string= segment "temp") (write-line (concatenate 'string "@" (write-to-string (+ (parse-integer index) 5))) out))
-                 ((string= segment "pointer") (write-line (concatenate 'string "@" (write-to-string (+ (parse-integer index) 3))) out))
-                 (T (progn
-                        (write-line (concatenate 'string "@" seg) out)
-                        (write-line "D=M" out)
-                        (write-line (concatenate 'string "@" index) out)
-                        (write-line "AD=D+A" out)))))))
-
-;; gen the constant asm
-;; val : string
-(defun gen-constant-asm (val)
-    (write-codes-to-string
-        (concatenate 'string "@" val)
-        "D=A"))
-
-(defun constant? (segment)
-    (string= "constant" segment))
-
-(defun gen-push-asm (segment index)
-    (with-output-to-string (out)
-        (write-line (concatenate 'string "// push " segment " " index ) out)
-        (if (constant? segment)
-            (write-line (gen-constant-asm index) out)
-            (progn
-                (write-line (gen-a-asm segment index) out)
-                (write-line "D=M" out)))
-        (write-string (gen-push-from-register-asm "D") out)))
-
-(defun gen-base-push-asm (reg-or-val)
-    (write-codes-to-string
-        "@SP"
-        "A=M"
-        (concatenate 'string "M=" reg-or-val)
-         "@SP"
-         "M=M+1"))
-
-
-(defun gen-push-from-register-asm (reg)
-    (with-output-to-string (out)
-        (write-string (gen-base-push-asm reg) out)))
-
-;; using R6 for temp using
-(defun gen-pop-asm (segment index)
-    (write-codes-to-string
-        ;; comment
-        (concatenate 'string "// pop " segment " " index)
-        (gen-a-asm segment index)
-        "D=A"
-        "@R6"
-        "M=D"
-        (gen-pop-to-register-asm "D")
-        "@R6"
-        "A=M"
-        "M=D"))
-
-(defun gen-normal-asm (op)
-    (cond ((add? op) (gen-add-asm))
-          ((sub? op) (gen-sub-asm))
-          ((neg? op) (gen-neg-asm))
-          ((eq? op) (gen-eq-asm))
-          ((gt? op) (gen-gt-asm))
-          ((lt? op) (gen-lt-asm))
-          ((and? op) (gen-and-asm))
-          ((or? op) (gen-or-asm))
-          ((not? op) (gen-not-asm))
-          (T (format T "unknonwn noraml operation op : ~a~%" op))))
-
 (defun add? (op)(string= "add" op))
 (defun sub? (op)(string= "sub" op))
 (defun neg? (op)(string= "neg" op))
@@ -165,27 +91,41 @@
 (defvar *false* 0)
 (defvar *inner-label-cnt* 0)
 
-(defun gen-pop-to-addr-asm (addr)
-    (write-codes-to-string
-        (gen-pop-to-register-asm "D")
-        (concatenate 'string "@" addr)
-        "M=D"))
+(defun assember-2-args-op-asm (op)
+    (list "@SP" "A=M-1" "D=M" "A=A-1" (concatenate 'string "M=M" op "D") "@SP" "M=M-1"))  
 
-(defun gen-pop-to-register-asm (reg)
-    (write-codes-to-string
-        "@SP"
-        "M=M-1"
-        "@SP"
-        "A=M"
-        (concatenate 'string reg "=M")))
+(defun assember-1-arg-op-asm (op)
+    (list "@SP" "A=M-1" (concatenate 'string "M=" op "M")))  
 
-(defun gen-set-addr-to-a-asm (addr)
-    "This function is used to gen asm such as:
-    A <------ addr."
-    (write-codes-to-string
-        (concatenate 'string "@" addr)))
+(defun assember-push-segment-asm (&optional reg)
+    "User who call this function must be sure that
+    the value which you will pushed stored in register reg.
+    if reg is not given the register D is default choice."
+    (list "@SP" "A=M" (or (and reg (concatenate 'string "M=" reg)) "M=D") "@SP" "M=M+1"))
 
-(defun write-codes-to-string (&rest codes)
+(defun assember-pop-segment-asm ()
+    "User who call this function must be sure that
+    the dest addr is stored in register R6."
+    (list "@SP" "A=M-1" "D=M" "@R6" "A=M" "M=D" "@SP" "M=M-1"))
+
+
+(defun assember-a-addr (segment index)
+    (cond ((string= segment "temp") (list (concatenate 'string "@" (write-to-string (+ (parse-integer index) 5))) "D=A"))
+          ((string= segment "pointer") (list (concatenate 'string "@" (write-to-string (+ (parse-integer index) 3))) "D=A"))
+          ((string= segment "constant") (list (concatenate 'string "@" index) "D=A"))
+          (T (list (concatenate 'string "@" (get-seg segment)) "D=M" (concatenate 'string "@" index) "AD=D+A"))))
+
+(defun assember-a-addr-R6 (segment index)
+    (append (assember-a-addr segment index)
+        (list "@R6" "M=D")))
+
+(defun assember-a-addrvalue-D (segment index)
+    (if (string= "constant" segment)
+        (assember-a-addr segment index)
+        (append (assember-a-addr segment index)
+         (list "D=M"))))
+
+(defun write-codes-to-string (codes)
     (with-output-to-string (out)
         (dolist (var codes)
             (write-line var out)))) 
@@ -194,25 +134,12 @@
 ;; the first is D, the second is M
 ;; such as: add/sub/lt/gt/eq
 ;;
-(defun gen-2-args-asm ()
-    (write-codes-to-string
-        (gen-pop-to-register-asm "D")
-        "@SP"
-        "M=M-1"
-        "@SP"
-        "A=M"))
 
-(defun gen-2-op-asm (string-op)
-    (write-codes-to-string
-        (gen-2-args-asm)
-        (concatenate 'string "M=M" string-op "D")
-        "@SP"
-        "M=M+1"))
 
-(defun gen-add-asm () (gen-2-op-asm "+"))
-(defun gen-sub-asm () (gen-2-op-asm "-"))
-(defun gen-and-asm () (gen-2-op-asm "&"))
-(defun gen-or-asm () (gen-2-op-asm "|"))
+(defun gen-add-asm () (assember-2-args-op-asm "+"))
+(defun gen-sub-asm () (assember-2-args-op-asm "-"))
+(defun gen-and-asm () (assember-2-args-op-asm "&"))
+(defun gen-or-asm  () (assember-2-args-op-asm "|"))
 
 
 (defun get-label (&optional new)
@@ -225,32 +152,56 @@
 
 (defun gen-boolean-asm (jmp-asm-code)
     (let ((new-label (get-label 1)))
-        (write-codes-to-string
-            (gen-2-args-asm)
-            "D=M-D"
-            (gen-push-from-register-asm "-1")
-            (concatenate 'string "@" new-label)
-            (concatenate 'string "D;" jmp-asm-code)
-            (gen-pop-to-register-asm "D")
-            (gen-base-push-asm "0")
+        (list 
+            "@SP" 
+            "A=M-1" 
+            "D=M" 
+            "A=A-1" 
+            "D=M-D" 
+            "M=-1" 
+            "@SP"
+            "M=M-1"
+            (concatenate 'string "@" new-label) 
+            (concatenate 'string "D;" jmp-asm-code) 
+            "@SP"
+            "A=M-1"
+            "M=0" 
             (concatenate 'string "(" new-label ")"))))
      
 (defun gen-eq-asm () (gen-boolean-asm "JEQ"))
 (defun gen-gt-asm () (gen-boolean-asm "JGT"))
 (defun gen-lt-asm () (gen-boolean-asm "JLT"))
-
-
-        
-(defun gen-neg-asm ()
-    (with-output-to-string (out)
-        (write-string (gen-pop-to-register-asm "D") out)
-        (write-string (gen-push-from-register-asm "-D") out)))
-
-(defun gen-not-asm ()
-    (with-output-to-string (out)
-        (write-string (gen-pop-to-register-asm "D") out)
-        (write-string (gen-push-from-register-asm "!D") out)))
       
+(defun gen-neg-asm () (assember-1-arg-op-asm "-"))
+(defun gen-not-asm () (assember-1-arg-op-asm "!"))
+      
+
+;; gen the A address asm
+;; segment : string
+;; index   : string
+
+(defun gen-push-asm (segment index)
+    (append (list (concatenate 'string "// " "push " segment " " index))
+            (assember-a-addrvalue-D segment index)
+            (assember-push-segment-asm)))
+
+;; using R6 for temp using
+(defun gen-pop-asm (segment index)
+    (append (list (concatenate 'string "// pop " segment " " index))
+        (assember-a-addr-R6 segment index)
+        (assember-pop-segment-asm)))
+
+(defun gen-normal-asm (op)
+    (cond ((add? op) (gen-add-asm))
+          ((sub? op) (gen-sub-asm))
+          ((neg? op) (gen-neg-asm))
+          ((eq? op) (gen-eq-asm))
+          ((gt? op) (gen-gt-asm))
+          ((lt? op) (gen-lt-asm))
+          ((and? op) (gen-and-asm))
+          ((or? op) (gen-or-asm))
+          ((not? op) (gen-not-asm))
+          (T (format T "unknonwn noraml operation op : ~a~%" op))))
 
 (defun genasm (op arg1 arg2)
     "The basic function to use gen asm codes."
@@ -290,8 +241,13 @@
                 ;;(write-line "// gen for vm command : " stream)
                 ;;(write-string (concatenate 'string "// " (string-trim "\n" var)) stream)
                 (multiple-value-bind (type arg1 arg2) (demul-command var)
-                    (write-string (genasm type arg1 arg2) stream))))))
+                    (write-string (write-codes-to-string (genasm type arg1 arg2)) stream))))))
                 
         
+
+
+
     
+
+
     
