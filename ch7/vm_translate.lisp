@@ -46,37 +46,15 @@
                 (append (list (subseq string 0 index)) (split (subseq string (+ 1 index)) delimiter))
                 (list string))))))
 
-(defun C_PUSH? (type)
-    (string= "push" type))
-
-(defun C_POP? (type)
-    (string= "pop" type))
-
-(defun C_LABEL? (type)
-    (string= "label" type))
-
-(defun C_GOTO? (type)
-    (string= "goto" type))
-
-(defun C_IF? (type)
-    (string= "if-goto" type))
-
-(defun C_FUNCTION? (type)
-    (string= "function" type))
-
-(defun C_RETURN? (type)
-    (string= "return" type))
-
-(defun C_CALL? (type)
-    (string= "call" type))
-
 (defun demul-command (command)
     "Demul the command to (TYPE ARG1 ARG2).
     If do not have the field, just set it to NIL."
     (let ((a (split command)))
         (destructuring-bind (type arg1 arg2) a
             (values type arg1 arg2))))
-            
+     
+(defun push? (op) (string= "push" op))
+(defun pop? (op) (string= "pop" op))       
 (defun add? (op)(string= "add" op))
 (defun sub? (op)(string= "sub" op))
 (defun neg? (op)(string= "neg" op))
@@ -86,10 +64,14 @@
 (defun and? (op) (string= "and" op))
 (defun or? (op) (string= "or" op))
 (defun not? (op) (string= "not" op))
+(defun label? (op) (string= "label" op))
+(defun if-goto? (op) (string= "if-goto" op))
+(defun goto? (op) (string= "goto" op))
 
 (defvar *true* -1)
 (defvar *false* 0)
 (defvar *inner-label-cnt* 0)
+(defvar *current-function-name* "")
 
 (defun assember-2-args-op-asm (op)
     (list "@SP" "A=M-1" "D=M" "A=A-1" (concatenate 'string "M=M" op "D") "@SP" "M=M-1"))  
@@ -174,8 +156,16 @@
       
 (defun gen-neg-asm () (assember-1-arg-op-asm "-"))
 (defun gen-not-asm () (assember-1-arg-op-asm "!"))
-      
 
+(defun build-label (string)
+    (concatenate 'string *current-function-name* "$" string))
+      
+(defun gen-label-asm (string) (list (concatenate 'string "(" (build-label string) ")")))
+(defun gen-if-goto-asm (label) 
+    (list "@SP" "A=M-1" "D=M" "@SP" "M=M-1" (concatenate 'string "@" (build-label label)) "D;JNE"))
+(defun gen-goto-asm (label)
+    (list (concatenate 'string "@" (build-label label)) "0;JMP"))
+ 
 ;; gen the A address asm
 ;; segment : string
 ;; index   : string
@@ -205,8 +195,11 @@
 
 (defun genasm (op arg1 arg2)
     "The basic function to use gen asm codes."
-    (cond ((c_push? op) (gen-push-asm arg1 arg2))
-          ((c_pop? op) (gen-pop-asm arg1 arg2))
+    (cond ((push? op) (gen-push-asm arg1 arg2))
+          ((pop? op) (gen-pop-asm arg1 arg2))
+          ((label? op) (gen-label-asm arg1))
+          ((if-goto? op) (gen-if-goto-asm arg1))
+          ((goto? op) (gen-goto-asm arg1))
           (T (gen-normal-asm op))))
           
 
