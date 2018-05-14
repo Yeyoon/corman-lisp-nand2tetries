@@ -174,14 +174,15 @@
 (defun gen-label-asm (string) (list (concatenate 'string "(" (build-label string) ")")))
 (defun gen-if-goto-asm (label) 
     (list "@SP" "A=M-1" "D=M" "@SP" "M=M-1" (concatenate 'string "@" (build-label label)) "D;JNE"))
-(defun gen-goto-asm (label)
-    (list (concatenate 'string "@" label) "0;JMP"))
+(defun gen-goto-asm (label &key (need-build T))
+    (list (concatenate 'string "@" (if need-build (build-label label) label)) "0;JMP"))
 
 (defun gen-function-asm (function-name args-num)
     (when function-name
         (setf *current-function-name* function-name)
         (let ((local-instructions  (loop for x from 0 to (parse-integer args-num)
                 for y = (gen-push-asm "constant" "0")
+                while (< x (parse-integer args-num))
                 collect y)))
             (flatten (append (list (concatenate 'string "(" function-name ")")) local-instructions)))))
 
@@ -198,39 +199,39 @@
                 (list "@THIS" "D=M")
                 (assember-push-segment-asm)
                 (list "@THAT" "D=M")
-                (assmeber-push-segment-asm)
-                (list (concatenate 'string "D=" (write-to-string (+ 5 (parse-integer args-num))))
+                (assember-push-segment-asm)
+                (list (concatenate 'string "@" (write-to-string (+ 5 (parse-integer args-num))))
+                      "D=A"
                       "@SP" "D=M-D" "@ARG" "M=D")
                 (list "@SP" "D=M" "@LCL" "M=D")
-                (gen-goto-asm function-name)
+                (gen-goto-asm function-name :need-build NIL)
                 (list (concatenate 'string "(" (build-label "returnAddress") ")"))))))
 
 (defun gen-return-asm ()
     (flatten
         (append
-            (list "@LCL" "D=M" "@R6" "M=D") ;; R6 is for frame
-            (list "@5" "D=A" "@R6" "A=M-D" "D=M" "@R7" "M=D") ;; R7 is for retAddr
+            (list "@LCL" "D=M" "@R13" "M=D") ;; R13 is for frame
+            (list "@5" "D=A" "@R13" "A=M-D" "D=M" "@R14" "M=D") ;; R14 is for retAddr
             (gen-pop-asm "argument" "0") ;; *ARG = pop
-            (list "@ARG" "D=A" "@SP" "M=D+1")
-            (list "@R6" "M=M-1" "A=M" "D=M" "@THAT" "M=D")
-            (list "@R6" "M=M-1" "A=M" "D=M" "@THIS" "M=D")
-            (list "@R6" "M=M-1" "A=M" "D=M" "@ARG" "M=D")
-            (list "@R6" "M=M-1" "A=M" "D=M" "@LCL" "M=D")
-            (list "@R7" "A=M" "0;JMP"))))
-
+            (list "@ARG" "D=M+1" "@SP" "M=D")
+            (list "@R13" "M=M-1" "A=M" "D=M" "@THAT" "M=D")
+            (list "@R13" "M=M-1" "A=M" "D=M" "@THIS" "M=D")
+            (list "@R13" "M=M-1" "A=M" "D=M" "@ARG" "M=D")
+            (list "@R13" "M=M-1" "A=M" "D=M" "@LCL" "M=D")
+            (list "@R14" "A=M" "0;JMP"))))
  
 ;; gen the A address asm
 ;; segment : string
 ;; index   : string
 
 (defun gen-push-asm (segment index)
-    (append (list (concatenate 'string "// " "push " segment " " index))
+    (append 
             (assember-a-addrvalue-D segment index)
             (assember-push-segment-asm)))
 
 ;; using R6 for temp using
 (defun gen-pop-asm (segment index)
-    (append (list (concatenate 'string "// pop " segment " " index))
+    (append
         (assember-a-addr-R6 segment index)
         (assember-pop-segment-asm)))
 
@@ -289,6 +290,7 @@
                 ;;(fresh-line stream)
                 ;;(write-line "// gen for vm command : " stream)
                 ;;(write-string (concatenate 'string "// " (string-trim "\n" var)) stream)
+                (write-line (concatenate 'string "// GEN CODES : " var) stream)
                 (multiple-value-bind (type arg1 arg2) (demul-command var)
                     (write-string (write-codes-to-string (genasm type arg1 arg2)) stream))))))
                 
