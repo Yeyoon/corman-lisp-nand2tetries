@@ -20,16 +20,6 @@
         (when (and (string/= r "") (string/= r " "))
             r)))
 
-(defun set-stack-top-asm ()
-    (with-output-to-string (out)
-        (write-line "@SP" out)
-        (write-line (concatenate 'string "M=" (write-to-string *stack-top*)) out)))
-
-(defvar *stack-top* 256)
-
-(defun init-stack (stream)
-    (write-line (set-stack-top-asm) stream))
-
 (defvar *segment-table* 
     '(("local" "LCL")
       ("argument" "ARG")
