@@ -94,8 +94,8 @@
 (defun add-new-static-segment (filename)
     (let ((len (length *static-map-table*)))
         (progn
-            (setf *static-map-table* (append *static-map-table* (list (list filename (+ len 16)))))
-            (+ len 16))))
+            (setf *static-map-table* (append *static-map-table* (list (list filename (+ (* 2 len) 16)))))
+            (+ (* 2 len) 16))))
  
 (defun get-static-segment ()
     (let ((v  (get-static-segment-1 *current-filename*)))
