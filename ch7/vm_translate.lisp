@@ -33,9 +33,6 @@
       ("argument" "ARG")
       ("this" "THIS")
       ("that" "THAT")
-      ("pointer" "R3")
-      ("temp" "R5")
-      ("static" "16")
       ("constant" NIL)))
 
 (defun get-seg (segment)
@@ -106,6 +103,7 @@
     (cond ((string= segment "temp") (list (concatenate 'string "@" (write-to-string (+ (parse-integer index) 5))) "D=A"))
           ((string= segment "pointer") (list (concatenate 'string "@" (write-to-string (+ (parse-integer index) 3))) "D=A"))
           ((string= segment "constant") (list (concatenate 'string "@" index) "D=A"))
+          ((string= segment "static") (list (concatenate 'string "@" (write-to-string (+ (parse-integer index) 16))) "D=A"))
           (T (list (concatenate 'string "@" (get-seg segment)) "D=M" (concatenate 'string "@" index) "AD=D+A"))))
 
 (defun assember-a-addr-R6 (segment index)
@@ -113,10 +111,10 @@
         (list "@R6" "M=D")))
 
 (defun assember-a-addrvalue-D (segment index)
-    (if (string= "constant" segment)
-        (assember-a-addr segment index)
-        (append (assember-a-addr segment index)
-         (list "D=M"))))
+    (let ((f1 (assember-a-addr segment index)))
+        (cond ((member segment (list "constant") :test #'equal) f1)
+              (T (append f1 (list "D=M"))))))
+
 
 (defun write-codes-to-string (codes)
     (with-output-to-string (out)
@@ -190,7 +188,7 @@
     (when function-name
         (flatten
             (append 
-                (list (concatenate 'string "@" (build-label "returnAddress")) "D=A")
+                (list (concatenate 'string "@" (get-label 1)) "D=A")
                 (assember-push-segment-asm)
                 (list "@LCL" "D=M")
                 (assember-push-segment-asm)
@@ -205,7 +203,7 @@
                       "@SP" "D=M-D" "@ARG" "M=D")
                 (list "@SP" "D=M" "@LCL" "M=D")
                 (gen-goto-asm function-name :need-build NIL)
-                (list (concatenate 'string "(" (build-label "returnAddress") ")"))))))
+                (list (concatenate 'string "(" (get-label) ")"))))))
 
 (defun gen-return-asm ()
     (flatten
