@@ -305,7 +305,9 @@
             (set-current-filename filename)
             (loop for var in commands
                 collect (multiple-value-bind (type arg1 arg2) (demul-command var)
-                            (genasm type arg1 arg2))))))
+                            (append
+                                (list (concatenate 'string "// " var)) 
+                                (genasm type arg1 arg2)))))))
 
 (defun assember-directory (dir)
     (let ((files (directory (concatenate 'string dir "\\*.vm"))))
