@@ -7,6 +7,7 @@
 ;;
 ;; using R6 for ARG1 
 ;; using R7 for ARG2
+(use-package 'pathnames)
 
 (defun remove-comment (line)
     "Return NIL if the line is a comment.
@@ -40,7 +41,6 @@
         (when (string= segment (first var))
             (return (second var)))))
     
-
 (defun split (str &optional delimiter)
     "Split string by delimiter."
     (let ((string (string-trim " " str)))
@@ -80,6 +80,27 @@
 (defvar *false* 0)
 (defvar *inner-label-cnt* 0)
 (defvar *current-function-name* "")
+(defvar *current-filename* "")
+
+(defun set-current-filename (filename)
+    (setf *current-filename* filename))
+
+(defvar *static-map-table* NIL)
+(defun get-static-segment-1 (filename)
+    (dolist (var *static-map-table*)
+        (when (string= (first var) filename)
+            (return (second var)))))
+
+(defun add-new-static-segment (filename)
+    (let ((len (length *static-map-table*)))
+        (progn
+            (setf *static-map-table* (append *static-map-table* (list (list filename (+ len 16)))))
+            (+ len 16))))
+ 
+(defun get-static-segment ()
+    (let ((v  (get-static-segment-1 *current-filename*)))
+        (or v
+            (add-new-static-segment *current-filename*))))
 
 (defun assember-2-args-op-asm (op)
     (list "@SP" "A=M-1" "D=M" "A=A-1" (concatenate 'string "M=M" op "D") "@SP" "M=M-1"))  
@@ -103,7 +124,7 @@
     (cond ((string= segment "temp") (list (concatenate 'string "@" (write-to-string (+ (parse-integer index) 5))) "D=A"))
           ((string= segment "pointer") (list (concatenate 'string "@" (write-to-string (+ (parse-integer index) 3))) "D=A"))
           ((string= segment "constant") (list (concatenate 'string "@" index) "D=A"))
-          ((string= segment "static") (list (concatenate 'string "@" (write-to-string (+ (parse-integer index) 16))) "D=A"))
+          ((string= segment "static") (list (concatenate 'string "@" (write-to-string (+ (parse-integer index) (get-static-segment) ))) "D=A"))
           (T (list (concatenate 'string "@" (get-seg segment)) "D=M" (concatenate 'string "@" index) "AD=D+A"))))
 
 (defun assember-a-addr-R6 (segment index)
@@ -273,24 +294,55 @@
  
 (defun build-output-filename (filename)
     (let ((index (position-if #'(lambda (ch) (char= ch #\.)) filename)))
-        (concatenate 'string (subseq filename 0 index) ".asm")))       
+        (if index
+            (concatenate 'string (subseq filename 0 index) ".asm")
+            (concatenate 'string filename "\\" (pathname-name filename) ".asm"))))       
+
+
+(defun assember-file (filename)
+    (let ((commands (read-all-commands filename)))
+        (progn
+            (set-current-filename filename)
+            (loop for var in commands
+                collect (multiple-value-bind (type arg1 arg2) (demul-command var)
+                            (genasm type arg1 arg2))))))
+
+(defun assember-directory (dir)
+    (let ((files (directory (concatenate 'string dir "\\*.vm"))))
+        (flatten 
+            (loop for filename in files
+                collect (assember-file (namestring filename))))))
+
+(defun vm-translator (filename-or-dir)
+    (if (probe-file filename-or-dir)
+        (assember-file filename-or-dir)
+        (assember-directory filename-or-dir)))
+
+(defun init-stack (&optional stream)
+    (progn
+        (write-line "// SP = 256 " stream)
+        (write-line "@256" stream)
+        (write-line "D=A" stream)
+        (write-line "@SP" stream)
+        (write-line "M=D" stream)
+        (write-line "// call Sys.init " stream)
+        (let ((r (gen-call-asm "Sys.init" "0")))
+            (dolist (var r)
+                (write-line var stream)))))
 
 ;;
 ;;=====================================================================
 ;;The interface for processing
 ;;
-(defun vm-translator (&optional filename)
+(defun main (&optional filename)
     (let* ((f (or filename (read)))
-          (commands (read-all-commands f))
-          (of (build-output-filename f)))
+           (of (build-output-filename f))
+           (res (vm-translator f)))
         (with-open-file (stream of :direction :output :if-exists :supersede)
-            (dolist (var commands)
-                ;;(fresh-line stream)
-                ;;(write-line "// gen for vm command : " stream)
-                ;;(write-string (concatenate 'string "// " (string-trim "\n" var)) stream)
-                (write-line (concatenate 'string "// GEN CODES : " var) stream)
-                (multiple-value-bind (type arg1 arg2) (demul-command var)
-                    (write-string (write-codes-to-string (genasm type arg1 arg2)) stream))))))
+            (print res)
+            (init-stack stream)
+            (dolist (var res)
+                (write-line var stream)))))
                 
         
 
