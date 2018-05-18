@@ -117,12 +117,47 @@
 ;; process a new line
 ;;
 
-(defun process-line (line)
+(defun process-line-1 (line)
   (if *in-comments*
       (process-token-list (split line))
       (when (not (is-line-comment? line))
-	(process-token-list (split (remove-line-comment line))))))
-	  
+	        (process-token-list (split (remove-line-comment line))))))
+
+(defun process-line (line)
+    (when line
+        (let ((nl (string-trim " " line)))
+            (and (string/= nl "") (process-line-1 nl)))))
+
+(defun pprocess-line-1 (line)
+    (let ((nline (string-trim " " line)))
+        (and (string/= nline "") nline)))
+
+(defun pprocess-line (line)
+    (and line (pprocess-line-1 line)))
+
+(defun debug-parse (filename)
+    (progn
+        (format T "filename is ~a~%" filename)
+    (with-open-file (stream filename :direction :input :if-does-not-exist nil)
+        (format T "filename is ~a~%" filename)
+        (when stream
+            (do ((line (read-line stream nil) (read-line stream nil)))
+                  ((null line))
+                  (print line))))))
+                        
+
+(defun debug-parse-1 (list-lines)
+    (mapcar #'process-line list-lines))
+
+(defun parse-file-1 (filename)
+    (let ((r NIL))
+        (progn
+            (with-open-file (stream filename :direction :input :if-does-not-exist NIL)
+                (when stream
+                    (do ((line (read-line stream nil) (read-line stream nil)))
+                        ((null line))
+                        (setf r (append r (process-line line))))))
+             r)))  
 	 
     
 
