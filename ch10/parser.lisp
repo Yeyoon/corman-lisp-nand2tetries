@@ -328,10 +328,6 @@
                         (gen-expression )
                         (gen-terminal  :given "]")))))))
 
-;; gen keywordConstant
-(defun gen-keywordConstant ()
-    (gen-terminal :type 'keywordConstant))
-
 ;; gen stringConstant
 (defun gen-stringConstant ()
     (gen-terminal :type 'stringConstant))
