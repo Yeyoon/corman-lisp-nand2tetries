@@ -580,9 +580,9 @@
                 (gen-parameterList )
                 (gen-terminal  :given ")")
                 (gen-subroutineBody )
+                (list "</subroutineDec>")
                 (when with-stars
-                    (gen-subroutineDec  :with-stars with-stars))
-                (list "</subroutineDec>")))))
+                    (gen-subroutineDec  :with-stars with-stars))))))
                     
 ;; gen type
 (defun type? (token-s)
@@ -650,8 +650,19 @@
 (defun compile-xml (filename)
     (let ((token-list (parse-file filename)))
         (when token-list
-            (pprint token-list)
             (gen-class token-list))))
+
+;;;
+;;;==================================
+;;; top level interface
+;;;
+(defun run (filename)
+    (let* ((index (search "." filename))
+           (nfilename (concatenate 'string (subseq filename 0 index) "-m.xml")))
+        (let ((result (compile-xml filename)))
+            (with-open-file (stream nfilename :direction :output :if-exsits :supersede)
+                (dolist (var result)
+                    (write-line var stream))))))
 
 ;;;
 ;;; TESTING CASES
