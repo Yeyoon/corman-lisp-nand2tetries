@@ -79,8 +79,21 @@
 ;;; 
 ;; codes for generate tokens
 ;;
+(defun print-pair (stream pair v)
+    (format stream "<~a>~a</~a>" pair v pair))
+
+(defun print-token (token stream depth)
+  (let ((type (token-type token))
+        (v (token-value token)))
+      (cond ((equal type 'symbol) (print-pair stream "symbol" v))
+    	    ((equal type 'keyword) (print-pair stream "keyword" v))
+    	    ((equal type 'integerConstant) (print-pair stream "integerConstant" v))
+    	    ((equal type 'stringConstant) (print-pair stream "stringConstant" v))
+    	    ((equal type 'identifier) (print-pair stream "identifier" v))
+    	   (T (format T "Unknown token ~a~%" token)))))
        
-(defstruct token type value)
+(defstruct (token (:print-function print-token))
+    type value)
 
 
 ;; 
@@ -219,11 +232,10 @@
         (if (or (and given (string/= (get-current-token-value) given))
                 (and type (not (equal (get-current-token-type) type))))
             NIL
-            (let ((v (get-current-token-value))
-                  (ty (get-current-token-type)))
-                (when (and v ty)
+            (let ((token (get-current-token)))
+                (when (token-p token)
                     (move-one)
-                    (format NIL "<~a>~a</~a>" ty v ty))))))
+                    (format NIL "~a" token))))))
 
 
 ;; flatten append
@@ -660,7 +672,7 @@
     (let* ((index (search "." filename))
            (nfilename (concatenate 'string (subseq filename 0 index) "-m.xml")))
         (let ((result (compile-xml filename)))
-            (with-open-file (stream nfilename :direction :output :if-exsits :supersede)
+            (with-open-file (stream nfilename :direction :output :if-exists :supersede)
                 (dolist (var result)
                     (write-line var stream))))))
 
