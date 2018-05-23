@@ -866,6 +866,31 @@
 ;;; ==========================================================
 ;;;
 
+;; this is for tracing the token
+(defvar *current-token* NIL)
+
+(defun next (stream)
+  (if *current-token*
+      *current-token*
+      (let ((token (get-next-token stream)))
+	(progn
+	  (setf *current-token* token)
+	  token))))
+
+(defun consume-one-token (stream &key value)
+  (let ((token (next stream)))
+    (when (token-p token)
+      (setf *current-token* NIL)
+      (if value
+	  (string= value (token-value token))
+	  T))))
+
+
+;;
+;; DETAILS FOR PARSING TO TOKEN FROM A STREAM
+;;
+
+      
 
   
 			 
