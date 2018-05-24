@@ -890,23 +890,79 @@
 ;; DETAILS FOR PARSING TO TOKEN FROM A STREAM
 ;;
 
-      
+;;
+;; parse-engine
+;;
+(defun process-line-comment (stream)
+  (let ((ch (read-char stream nil)))
+    (when ch
+      (when (char/= ch #\newline)
+	(process-line-comment stream)))))
 
+(defun process-seg-comment (stream)
+  (let ((ch (read-char stream nil)))
+    (when ch 
+      (if (char/= ch #\*)
+	  (process-seg-comment stream)
+	  (let ((nch (read-char stream nil)))
+	    (when nch
+	      (when (char/= nch #\/)
+		  (process-seg-comment stream))))))))
+
+(defun symbol-char? (ch) 
+  (member ch 
+	  +const-symbol-list+ 
+	  :test #'char=
+	  :key #'(lambda (ch) (char ch 0))))
+
+(defun get-next-char (stream)
+  (let ((ch (read-char stream nil)))
+    (when ch
+      (cond ((char= ch #\/)
+	     (let ((nch (peek-char nil stream nil)))
+	       (when nch
+		 (cond ((char= nch #\/)
+			(progn (read-char stream nil)
+			       (process-line-comment stream)))
+		       ((char= nch #\*)
+			(progn (read-char stream nil)
+			       (process-seg-comment stream)))
+		       (T (format T "parser error"))))))
+	    ((char= ch #\SPACE)
+	     (progn
+	       (do ((nch 
+		     (peek-char nil stream nil) 
+		     (peek-char nil stream nil)))
+		   ((char/= nch #\SPACE))
+		 (read-char stream nil))
+	       (return nch)))
+	    (T (return ch))))))
+
+      
   
-			 
-      
-		     
-	  
-       
-       
-
-
-       
-
-
- 
-
-      
-
-
-
+(defun get-next-token (stream)
+  (let ((token-v (make-array 0 
+			     :fill-pointer 0 
+			     :adjustable T  
+			     :element-type 'character))
+	(progn
+	(do ((ch (get-next-char stream) 
+		 (get-next-char strean)))
+	    ((or  (symbol-char? ch)
+		 (char= #\space ch)
+		 (char= #\newline ch)))
+	  (vector-push-extend ch token-v))
+	(cond ((symbol-char? ch)
+	       (if (= 0 (length token-v))
+		   (progn
+		     (vector-push-extend ch token-v)
+		     token-v)
+		   (progn
+		     (unread-char ch stream)
+		     token-v)))
+	      ((or (char= #\space ch) 
+		   (char= #\newline ch))
+	       (if (= 0 (length token-v))
+		   (get-next-token stream)
+		   token-v))
+	      (T (format T "unknown condition ~%")))))))
