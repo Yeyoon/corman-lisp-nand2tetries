@@ -71,7 +71,7 @@
        (char= #\" (char (- (length str-token) 1) str-token))))
 
 (defun identifier-string? (str-token)
-  (let ((ch (char str 0)))
+  (let ((ch (char str-token 0)))
     (not (member ch '(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)))))
 
 (defun build-token-1 (str-token)
@@ -90,7 +90,8 @@
 
 (defun build-token (str-token)
   "build token from a string."
-  (let ((token (find str-token +const-token-list+ :test #'token-value)))
+  (let ((token (find-if #'(lambda (v) (string= str-token (token-value v)))
+			+const-token-list+)))
     (if token
 	token
 	(build-token-1 str-token))))
@@ -105,7 +106,7 @@
 ;; class
 ;; 'class' classVarName '{' classVarDec* subroutineDec* '}'
 ;;
-(defstruct (class (:print-function print-class))
+(defstruct (class-s (:print-function print-class))
   className
   (classVarDec* NIL)
   (subroutineDec* NIL))
@@ -114,7 +115,7 @@
   (progn
     (format stream "<class>")
     (format stream "~a~%" (build-token "class"))
-    (format stream "~a~%" (class-className class))
+    (format stream "~a~%" (class-s-className class))
     (format stream "~a~%" (build-token "{"))
     (dolist (var (class-classVarDec* class))
       (format stream "~a" var))
@@ -126,7 +127,7 @@
 (defun build-class (input-stream)
   (let ((token (next input-stream)))
     (when (and (token-p token) (string= (token-value token) "class"))
-      (make-class
+      (make-class-s
        :className (build-className input-stream)
        :classVarDec* (build-classVarDec* input-stream)
        :subroutineDec* (build-subroutineDec* input-stream)))))
@@ -173,11 +174,11 @@
 ;; type
 ;; 'int' | 'char' | 'boolean' | 'class' | className
 ;;
-(defstruct (type (:print-function print-type))
+(defstruct (types (:print-function print-type))
   type)
 
 (defun print-type (type stream depth)
-  (format stream "~a~%" (type-type type)))
+  (format stream "~a~%" (types-type type)))
 
 (defun build-type (input-stream)
   (let ((token (next input-stream)))
@@ -185,7 +186,7 @@
 	       (or (member (token-value token) '("int" "char" "boolean" "class") :test #'equal)
 		   (equal (token-type token) 'identifier)))
       (consume-one-token)
-      (make-type :type token))))
+      (make-types :type token))))
 
 
 
@@ -870,12 +871,11 @@
 (defvar *current-token* NIL)
 
 (defun next (stream)
-  (if *current-token*
-      *current-token*
-      (let ((token (get-next-token stream)))
-	(progn
-	  (setf *current-token* token)
-	  token))))
+    (progn
+      (unless *current-token*
+            (let ((token (get-next-token stream)))
+                (setf *current-token* (build-token token))))
+    *current-token*))
 
 (defun consume-one-token (stream &key value)
   (let ((token (next stream)))
@@ -904,10 +904,12 @@
     (when ch 
       (if (char/= ch #\*)
 	  (process-seg-comment stream)
-	  (let ((nch (read-char stream nil)))
+	  (let ((nch (peek-char nil stream nil)))
 	    (when nch
-	      (when (char/= nch #\/)
-		  (process-seg-comment stream))))))))
+	      (format T "ch is ~a nch is ~a ~%" ch nch)
+	      (if (char/= nch #\/)
+		  (process-seg-comment stream)
+		  (read-char stream nil))))))))
 
 (defun symbol-char? (ch) 
   (member ch 
@@ -926,43 +928,46 @@
 			       (process-line-comment stream)))
 		       ((char= nch #\*)
 			(progn (read-char stream nil)
-			       (process-seg-comment stream)))
+			       (process-seg-comment stream)
+			       (pprint "after process seg comment stream")
+			       (get-next-char stream)))
 		       (T (format T "parser error"))))))
 	    ((char= ch #\SPACE)
-	     (progn
-	       (do ((nch 
-		     (peek-char nil stream nil) 
-		     (peek-char nil stream nil)))
-		   ((char/= nch #\SPACE))
-		 (read-char stream nil))
-	       (return nch)))
-	    (T (return ch))))))
+	     (do ((nch 
+		   (peek-char nil stream nil) 
+		   (peek-char nil stream nil)))
+		 ((char/= nch #\SPACE) #\space)
+	       (read-char stream nil)))
+	    (T ch)))))
+  
+(defun stop-char? (ch)
+  (or (char= #\newline ch)
+      (char= #\space ch)
+      (symbol-char? ch)))
 
-      
+(defun collect-to-vector (stream vector &key test)
+  (do ((ch (get-next-char stream)
+	   (get-next-char stream)))
+      ((funcall test ch) ch)
+    (vector-push-extend ch vector)))
   
 (defun get-next-token (stream)
   (let ((token-v (make-array 0 
 			     :fill-pointer 0 
 			     :adjustable T  
-			     :element-type 'character))
-	(progn
-	(do ((ch (get-next-char stream) 
-		 (get-next-char strean)))
-	    ((or  (symbol-char? ch)
-		 (char= #\space ch)
-		 (char= #\newline ch)))
-	  (vector-push-extend ch token-v))
-	(cond ((symbol-char? ch)
-	       (if (= 0 (length token-v))
-		   (progn
-		     (vector-push-extend ch token-v)
-		     token-v)
-		   (progn
-		     (unread-char ch stream)
-		     token-v)))
-	      ((or (char= #\space ch) 
-		   (char= #\newline ch))
-	       (if (= 0 (length token-v))
-		   (get-next-token stream)
-		   token-v))
-	      (T (format T "unknown condition ~%")))))))
+			     :element-type 'character)))
+	(let ((ch (collect-to-vector stream token-v :test #'stop-char?)))
+	  (cond ((symbol-char? ch)
+		 (if (= 0 (length token-v))
+		     (progn
+		       (vector-push-extend ch token-v)
+		       token-v)
+		     (progn
+		       (unread-char ch stream)
+		       token-v)))
+		((or (char= #\space ch) 
+		     (char= #\newline ch))
+		 (if (= 0 (length token-v))
+		     (get-next-token stream)
+		     token-v))
+		(T (format T "unknown condition ~%"))))))
