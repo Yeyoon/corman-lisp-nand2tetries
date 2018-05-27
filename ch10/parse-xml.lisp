@@ -67,7 +67,7 @@
 
 (defun stringConstant-string? (str-token)
   (and (>= (length str-token) 2)
-       (char= #\" (char 0 str-token))
+       (char= #\" (char str-token 0))
        (char= #\" (char (- (length str-token) 1) str-token))))
 
 (defun identifier-string? (str-token)
@@ -96,6 +96,9 @@
 	token
 	(build-token-1 str-token))))
 
+(defun =? (token str)
+  (and (token-p token)
+       (string= (token-value token) str)))
 
 ;;
 ;; Program structure
@@ -363,7 +366,7 @@
   (let ((token (next input-stream)))
     (when (and (token-p token)
 	       (equal 'identifier (token-type token)))
-      (consume-one-token)
+      (consume-one-token input-stream)
       (make-subroutineName :name token))))
 
 ;;
@@ -380,7 +383,7 @@
   (let ((token (next input-stream)))
     (when (and (token-p token)
 	       (equal 'identifier (token-type token)))
-      (consume-one-token)
+      (consume-one-token input-stream)
       (make-varName :name token))))
 
 
@@ -464,17 +467,18 @@
 (defun build-letStatement (input-stream)
   (let ((token (next input-stream)))
     (when (and (token-p token) (string= "let" (token-value token)))
-      (consume-one-token)
+      (consume-one-token input-stream)
       (let ((r
 	     (make-letStatement 
 	      :varName (build-varName input-stream)
 	      :array-expression (build-array-expression input-stream)
-	      :expression (and (consume-one-token :value "=")
+	      :expression (and (consume-one-token input-stream :value "=")
 			       (build-expression input-stream))
 	      )))
 	(progn
-	  (consume-one-token :value ";")
+	  (consume-one-token input-stream :value ";")
 	  r)))))
+
 
 
 ;;
@@ -503,26 +507,26 @@
 (defun build-ifStatement (input-stream)
   (let ((token (next input-stream)))
     (when (and (token-p token) (string= "if" (token-value token)))
-      (consume-one-token)
+      (consume-one-token input-stream)
       (next input-stream)
-      (consume-one-token :value "(")
+      (consume-one-token input-stream :value "(")
       (make-ifStatement
        :expression (build-expression input-stream)
-       :if-statements (and (consume-one-token :value ")")
-			   (consume-one-token :value "{")
+       :if-statements (and (consume-one-token input-stream :value ")")
+			   (consume-one-token input-stream :value "{")
 			   (build-statements input-stream))
-       :else-statements (and (consume-one-token :value "}")
+       :else-statements (and (consume-one-token input-stream :value "}")
 			     (build-else-statements input-stream))))))
 
 (defun build-else-statements (input-stream)
   (let ((token (next input-stream)))
     (when (and (token-p token) (string= (token-value token) "else"))
-      (consume-one-token)
+      (consume-one-token input-stream)
       (next input-stream)
-      (consume-one-token :value "{")
+      (consume-one-token input-stream :value "{")
       (let ((r (build-statements input-stream)))
 	(progn
-	  (consume-one-token :value "}")
+	  (consume-one-token input-stream :value "}")
 	  r)))))
 
 
@@ -642,6 +646,14 @@
   (make-expression
    :term* (build-expression-1 input-stream)))
 
+(defun build-array-expression (input-stream)
+  (let ((token (next input-stream)))
+    (when (and (token-p token)
+	       (string= "[" (token-value token)))
+      (let ((r (build-expression input-stream)))
+	(progn
+	  (consume-one-token input-stream :value "]")
+	  r)))))
 
 ;;
 ;; term
@@ -695,24 +707,24 @@
 		   (make-term :arg1 (build-keywordConstant input-stream) :arg2 NIL))
 		  ((unaryOp? token)
 		   (make-term :arg1 (build-unaryOp input-stream)
-			      :arg2 (and (consume-one-token)
+			      :arg2 (and (consume-one-token input-stream)
 					 (build-term input-stream))))
 		  ((string= "(" (token-value token))
 		   (progn
-		     (consume-one-token)
+		     (consume-one-token input-stream)
 		     (make-term :arg1 (let ((r (build-expression input-stream)))
-					(progn (consume-one-token :value ")") r))
+					(progn (consume-one-token input-stream :value ")") r))
 				:arg2 NIL)))
 		  ((equal 'identifier (token-type token))
 		   (make-term :arg1 (build-varName input-stream)
 			      :arg2 (let ((token (next input-stream)))
 				      (when (and (token-p token)
 						 (string= "[" (token-value token)))
-					(consume-one-token)
+					(consume-one-token input-stream)
 					
 					(let ((r (build-expression input-stream)))
 					  (progn
-					    (consume-one-token :value "]")
+					    (consume-one-token input-stream :value "]")
 					    r))))))
 		  (T (format T "NOT TERM ~a~%" token))))))))
 
@@ -743,25 +755,29 @@
 
 
 (defun build-subroutineCall (input-stream)
-  (let ((token (next input-stream)))
-    (when (and (token-p token) (equal (token-type token) 'identifier))
-      (consume-one-token)
+  (let ((token (next input-stream))
+	(ntoken (peek-token input-stream)))
+    (when (and (token-p token) 
+	       (equal (token-type token) 'identifier)
+	       (or (=? ntoken "(")
+		   (=? ntoken ".")))
+      (consume-one-token input-stream)
       (let ((ntoken (next input-stream)))
 	(if (string= (token-value ntoken) "(")
 	    (make-subroutineCall
 	     :classVarName NIL
 	     :subroutineName token
-	     :expressionList (and (consume-one-token) 
+	     :expressionList (and (consume-one-token input-stream) 
 				  (let ((r (build-expressionList input-stream)))
-				    (progn (consume-one-token :value ")")
+				    (progn (consume-one-token input-stream :value ")")
 					   r))))
 	    (make-subroutineCall
 	     :classVarName token
-	     :subroutineName (and (consume-one-token :value ".")
+	     :subroutineName (and (consume-one-token input-stream :value ".")
 				  (build-subroutineName input-stream))
-	     :expressionList (and (consume-one-token :value "(")
+	     :expressionList (and (consume-one-token input-stream :value "(")
 				  (let ((r (build-expressionList input-stream)))
-				    (progn (consume-one-token :value ")")
+				    (progn (consume-one-token input-stream :value ")")
 					   r)))))))))
 
 
@@ -786,7 +802,7 @@
   (let ((v (build-expression input-stream)))
     (when v
       (cons v 
-	    (let ((token (next input-line)))
+	    (let ((token (next input-stream)))
 	      (when (and (token-p token) (string= (token-value token) ","))
 		(consume-one-token)
 		(build-expressionList-1 input-stream)))))))
@@ -810,8 +826,8 @@
 (defun build-op (input-stream)
   (let ((token (next input-stream)))
     (when (and (token-p token)
-	       (member (token-value) '("+" "-" "*" "/" "&" "|" "<" ">" "=") :test #'equal))
-      (consume-one-token)
+	       (member (token-value token) '("+" "-" "*" "/" "&" "|" "<" ">" "=") :test #'equal))
+      (consume-one-token input-stream)
       (make-op :op token))))
 
 ;;
@@ -869,21 +885,32 @@
 
 ;; this is for tracing the token
 (defvar *current-token* NIL)
+(defvar *peek-token* NIL)
 
 (defun next (stream)
-    (progn
-      (unless *current-token*
-            (let ((token (get-next-token stream)))
-                (setf *current-token* (build-token token))))
-    *current-token*))
+  (if *current-token*
+      *current-token*
+      (if *peek-token*
+	  (progn
+	    (setf *current-token* *peek-token*)
+	    (setf *peek-token* NIL)
+	    *current-token*)
+	  (let ((token (get-next-token stream)))
+	    (when token
+	      (setf *current-token* token)
+	      *current-token*)))))
+
+(defun peek-token (stream)
+  (let ((r (get-next-token stream)))
+    (when r
+      (setf *peek-token* r)
+      r)))
 
 (defun consume-one-token (stream &key value)
   (let ((token (next stream)))
-    (when (token-p token)
-      (setf *current-token* NIL)
-      (if value
-	  (string= value (token-value token))
-	  T))))
+    (and (token-p token)
+	 (if value (=? token value) T))))
+	  
 
 
 ;;
@@ -951,7 +978,7 @@
       ((funcall test ch) ch)
     (vector-push-extend ch vector)))
   
-(defun get-next-token (stream)
+(defun get-next-token-1 (stream)
   (let ((token-v (make-array 0 
 			     :fill-pointer 0 
 			     :adjustable T  
@@ -971,3 +998,8 @@
 		     (get-next-token stream)
 		     token-v))
 		(T (format T "unknown condition ~%"))))))
+
+(defun get-next-token (stream)
+  (let ((token-str (get-next-token stream)))
+    (when token-str
+      (build-token token-str))))
