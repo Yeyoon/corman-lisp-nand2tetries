@@ -453,9 +453,9 @@
 
 (defun print-letStatement (lst stream depth)
   (progn
-    (format stream "<letStatement>")
+    (format stream "<letStatement>~%")
     (format stream "~a~%" (build-token "let"))
-    (format stream "~a~%" (letStatement-varName lst))
+    (format stream "~a" (letStatement-varName lst))
     (when (letStatement-array-expression lst)
       (format stream "~a~%" (build-token "["))
       (format stream "~a~%" (letStatement-array-expression lst))
@@ -629,7 +629,7 @@
 
 (defun print-expression (exp stream depth)
   (progn
-    (format stream "<expression>")
+    (format stream "<expression>~%")
     (dolist (var (expression-term* exp))
       (format stream "~a~%" var))
     (format stream "</expression>")))
@@ -666,7 +666,7 @@
 
 (defun print-term (term stream depth)
   (progn
-    (format stream "<term>")
+    (format stream "<term>~%")
     ;; check if it is one arg
     (if (null (term-arg2 term))
 	;; check if it is '(' expression ')'
@@ -692,8 +692,9 @@
 
 (defun build-term (input-stream)
   (let ((sbc (build-subroutineCall input-stream)))
-    (if sbc
-	(make-term :arg1 sbc :arg2 NIL)
+    (if sbc (progn
+        (format T "sbc is ~a" sbc)
+	(make-term :arg1 sbc :arg2 NIL))
 	(let ((token (next input-stream)))
 	  (when (and (token-p token)
 		     (or (member (token-type token) '(integerConstant stringConstant))
@@ -743,15 +744,20 @@
 
 (defun print-subroutineCall (sbc stream depth)
   (progn
-    (format stream "<subroutineCall>")
     (when (subroutineCall-classVarName sbc)
       (format stream "~a~%" (subroutineCall-classVarname sbc))
       (format stream "~a~%" (build-token ".")))
-    (format stream "~a~%" (subroutineCall-subroutineName sbc))
+    (when (subroutineCall-subroutineName sbc)
+      (format stream "~a~%" (subroutineCall-subroutineName sbc)))
     (format stream "~a~%" (build-token "("))
-    (format stream "~a~%" (subroutineCall-expressionList sbc))
-    (format stream "~a~%" (build-token ")"))
-    (format stream "</subroutineCall>")))
+    (let ((expl (subroutineCall-expressionList sbc)))
+      (if expl
+          (format stream "~a~%" expl)
+        (progn
+          (format stream "<expressionList>~%")
+          (format stream "</expressionList>~%"))))
+
+    (format stream "~a~%" (build-token ")"))))
 
 
 (defun build-subroutineCall (input-stream)
@@ -908,8 +914,10 @@
 
 (defun consume-one-token (stream &key value)
   (let ((token (next stream)))
+    (progn (format "token is ~a, value is ~a~%" token value)
     (and (token-p token)
-	 (if value (=? token value) T))))
+         (or (setf *current-token* NIL)
+             (if value (=? token value) T))))))
 	  
 
 
@@ -995,11 +1003,11 @@
 		((or (char= #\space ch) 
 		     (char= #\newline ch))
 		 (if (= 0 (length token-v))
-		     (get-next-token stream)
+		     (get-next-token-1 stream)
 		     token-v))
 		(T (format T "unknown condition ~%"))))))
 
 (defun get-next-token (stream)
-  (let ((token-str (get-next-token stream)))
+  (let ((token-str (get-next-token-1 stream)))
     (when token-str
       (build-token token-str))))
