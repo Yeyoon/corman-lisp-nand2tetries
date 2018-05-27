@@ -356,7 +356,7 @@
 ;; subroutineName
 ;; identifier
 ;;
-(defstruct (subroutineName (:print-function print-className))
+(defstruct (subroutineName (:print-function print-subroutineName))
   name)
 
 (defun print-subroutineName (subname stream depth)
@@ -640,11 +640,13 @@
       (cons term 
 	    (let ((op (build-op input-stream)))
 	      (when op
-		(cons op (build-expression input-stream))))))))
+		(cons op (build-expression-1 input-stream))))))))
 
 (defun build-expression (input-stream)
-  (make-expression
-   :term* (build-expression-1 input-stream)))
+  (let ((e1 (build-expression-1 input-stream)))
+    (when e1
+      (make-expression
+       :term* e1))))
 
 (defun build-array-expression (input-stream)
   (let ((token (next input-stream)))
@@ -673,21 +675,21 @@
 	(if (expression-p (term-arg1 term))
 	    (progn
 	      (format stream "~a~%" (build-token "("))
-	      (format stream "~a~%" (term-arg1 term))
+	      (format stream "~a" (term-arg1 term))
 	      (format stream "~a~%" (build-token ")")))
-	    (format stream "~a~%" (term-arg1 term)))
+	    (format stream "~a" (term-arg1 term)))
 	;; now it is 2 args
 	;; check if it is varName '[' expression ']'
 	(if (varName-p (term-arg1 term))
 	    (progn
-	      (format stream "~a~%" (term-arg1 term))
+	      (format stream "~a" (term-arg1 term))
 	      (format stream "~a~%" (build-token "["))
 	      (format stream "~a~%" (term-arg2 term))
-	      (format stream "~a~%" (build-token "]")))
+	      (format stream "~a" (build-token "]")))
 	    ;; it is unaryOp term
 	    (progn
 	      (format stream "~a~%" (term-arg1 term))
-	      (format stream "~a~%" (term-arg2 term)))))
+	      (format stream "~a" (term-arg2 term)))))
     (format stream "</term>")))
 
 (defun build-term (input-stream)
@@ -748,7 +750,7 @@
       (format stream "~a~%" (subroutineCall-classVarname sbc))
       (format stream "~a~%" (build-token ".")))
     (when (subroutineCall-subroutineName sbc)
-      (format stream "~a~%" (subroutineCall-subroutineName sbc)))
+      (format stream "~a" (subroutineCall-subroutineName sbc)))
     (format stream "~a~%" (build-token "("))
     (let ((expl (subroutineCall-expressionList sbc)))
       (if expl
@@ -914,7 +916,7 @@
 
 (defun consume-one-token (stream &key value)
   (let ((token (next stream)))
-    (progn (format "token is ~a, value is ~a~%" token value)
+    (progn (format T "token is ~a, value is ~a~%" token value)
     (and (token-p token)
          (or (setf *current-token* NIL)
              (if value (=? token value) T))))))
@@ -1011,3 +1013,4 @@
   (let ((token-str (get-next-token-1 stream)))
     (when token-str
       (build-token token-str))))
+
