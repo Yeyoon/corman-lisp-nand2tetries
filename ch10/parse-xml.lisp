@@ -68,7 +68,7 @@
 (defun stringConstant-string? (str-token)
   (and (>= (length str-token) 2)
        (char= #\" (char str-token 0))
-       (char= #\" (char (- (length str-token) 1) str-token))))
+       (char= #\" (char str-token (- (length str-token) 1) ))))
 
 (defun identifier-string? (str-token)
   (let ((ch (char str-token 0)))
@@ -147,12 +147,12 @@
 
 (defun print-classVarDec (classVarDec stream depth)
   (progn
-    (format stream "<classVarDec>")
+    (format stream "<classVarDec>~%")
     (format stream "~a~%" (classVarDec-static-field classVarDec))
-    (format stream "~a~%" (classVarDec-type classVarDec))
+    (format stream "~a" (classVarDec-type classVarDec))
     (dolist (var (classVarDec-varName classVarDec))
-      (format stream "~a~%" var)
-      (when (not (equal var (last (classVarDec-varName classVarDec))))
+      (format stream "~a" var)
+      (when (not (equal var (first (last (classVarDec-varName classVarDec)))))
 	(format stream "~a~%" (build-token ","))))
     (format stream "~a~%" (build-token ";"))
     (format stream "</classVarDec>")))
@@ -162,15 +162,20 @@
     (when (and (token-p token) 
 	       (or (string= (token-value token) "static")
 		   (string= (token-value token) "field")))
-      (make-classVarDec
-       :static-field token
-       :type (build-type input-stream)
-       :varName (build-varName* input-stream)))))
+      (consume-one-token input-stream)
+      (let ((r (make-classVarDec
+		:static-field token
+		:type (build-type input-stream)
+		:varName (build-varName* input-stream))))
+	(and (consume-one-token input-stream :value ";")
+	     r)))))
 
 (defun build-classVarDec* (input-stream)
-  (do ((x (build-classVarDec input-stream) (build-classVarDec input-stream)))
-      ((null x))
-    (collect x)))
+  (let ((r NIL))
+    (do ((x (build-classVarDec input-stream) (build-classVarDec input-stream)))
+	((null x) r)
+      (setf r (append r (list x))))))
+      
 
 
 ;;
@@ -188,7 +193,7 @@
     (when (and (token-p token)
 	       (or (member (token-value token) '("int" "char" "boolean" "class") :test #'equal)
 		   (equal (token-type token) 'identifier)))
-      (consume-one-token)
+      (consume-one-token input-stream)
       (make-types :type token))))
 
 
@@ -199,7 +204,7 @@
 ;; subroutineName '(' parameterList ')' subroutineBody
 ;;
 (defstruct (subroutineDec (:print-function print-subroutineDec))
-  con-fun-metod
+  con-fun-method
   void-type
   subroutineName
   parameterList
@@ -208,36 +213,36 @@
 
 (defun print-subroutineDec (subroutineDec stream depth)
   (progn
-    (format stream "<subroutineDec>")
+    (format stream "<subroutineDec>~%")
     (format stream "~a~%" (subroutineDec-con-fun-method subroutineDec))
     (format stream "~a~%" (subroutineDec-void-type subroutineDec))
-    (format stream "~a~%" (subroutineDec-subroutineName subroutineDec))
+    (format stream "~a" (subroutineDec-subroutineName subroutineDec))
     (format stream "~a~%" (build-token "("))
-    (format stream "~a~%" (subroutineDec-parameterList subroutineDec))
+    (format stream "~a" (subroutineDec-parameterList subroutineDec))
     (format stream "~a~%" (build-token ")"))
-    (format stream "~a~%" (subroutineDec-subroutineBody subroutineDec))
+    (format stream "~a" (subroutineDec-subroutineBody subroutineDec))
     (format stream "</subroutineDec>")))
 
 (defun build-subroutineDec (input-stream)
   (let ((token (next input-stream)))
     (when (and (token-p token)
 	       (member (token-value token) '("constructor" "function" "method") :test #'equal))
-      (consume-one-token)
+      (consume-one-token input-stream)
       (make-subroutineDec
        :con-fun-method token
        :void-type (build-void-type input-stream)
        :subroutineName (build-subroutineName input-stream)
-       :parameterList (and (consume-one-token :value "(")
+       :parameterList (and (consume-one-token input-stream :value "(")
 			   (build-parameterList input-stream))
-       :subroutineBody (and (consume-one-token :value ")")
-			    (build-subroutineBody))))))
+       :subroutineBody (and (consume-one-token input-stream :value ")")
+			    (build-subroutineBody input-stream))))))
 
 (defun build-void-type (input-stream)
   (let ((token (next input-stream)))
     (when (token-p token)
       (if (string= (token-value token) "void")
 	  (progn
-	    (consume-one-token)
+	    (consume-one-token input-stream)
 	    token)
 	  (build-type input-stream)))))
 
@@ -257,11 +262,12 @@
       (format stream "~a~%" (first x))
       (format stream "~a~%" (second x))
       (when (not (equal x (last (parameterList-typevarName parameterList))))
-	(format stream "~a~%" (build-token ","))))))
+	(format stream "~a~%" (build-token ","))))
+    (format stream "</parameterList>~%")))
 
 (defun build-parameterList-1 (input-stream)
   (let ((type (build-type input-stream)))
-    (when (type-p type)
+    (when (Types-p type)
       (consume-ont-token)
       (cons (list type (build-varName input-stream))
 	    (let ((token (next input-stream)))
@@ -283,21 +289,24 @@
 
 (defun print-subroutineBody (sbb stream depth)
   (progn
-    (format stream "<subroutineBody>")
+    (format stream "<subroutineBody>~%")
+    (format stream "~a~%" (build-token "{"))
     (dolist (var (subroutineBody-varDec* sbb))
-      (format "~a~%" var))
-    (format stream "~a~%" (subroutineBody-statements sbb))))
+      (format stream "~a" var))
+    (format stream "~a~%" (subroutineBody-statements sbb))
+    (format stream "~a~%" (build-token "}"))
+    (format stream "</subroutineBody>~%")))
 
 (defun build-subroutineBody (input-stream)
   (let ((token (next input-stream)))
     (when (and (token-p token)
 	       (string= (token-value token) "{"))
-      (consume-one-token)
+      (consume-one-token input-stream)
       (let ((r (make-subroutineBody
 		:varDec* (build-varDec* input-stream)
 		:statements (build-statements input-stream))))
 	(progn
-	  (consume-one-token :value "}")
+	  (consume-one-token input-stream :value "}")
 	  r)))))
 
 
@@ -311,28 +320,31 @@
 
 (defun print-varDec (varDec stream depth)
   (progn
-    (format stream "<varDec>")
+    (format stream "<varDec>~%")
     (format stream "~a~%" (build-token "var"))
-    (format stream "~a~%" (varDec-type varDec))
+    (format stream "~a" (varDec-type varDec))
     (dolist (v (varDec-varName varDec))
-      (format stream "~a~%" v)
-      (when (not (equal (last (varDec-varName varDec)) v))
+      (format stream "~a" v)
+      (when (not (equal (first (last (varDec-varName varDec))) v))
 	(format stream "~a~%" (build-token ","))))
     (format stream "~a~%" (build-token ";"))
-    (format stream "</varDec>")))
+    (format stream "</varDec>~%")))
 
 (defun build-varDec (input-stream)
   (let ((token (next input-stream)))
     (when (and (token-p token) (string= (token-value token) "var"))
-      (consume-one-token)
-      (make-varDec
-       :type (build-type input-stream)
-       :varName (build-varName* input-stream)))))
+      (consume-one-token input-stream)
+      (let ((r (make-varDec
+		:type (build-type input-stream)
+		:varName (build-varName* input-stream))))
+	(and (consume-one-token input-stream :value ";")
+	     r)))))
 
 (defun build-varDec* (input-stream)
-  (do ((x (build-varDec input-stream) (build-varDec input-stream)))
-      ((null x))
-    (collect x)))
+  (let ((r NIL))
+    (do ((x (build-varDec input-stream) (build-varDec input-stream)))
+	((null x) r)
+      (setf r (append r (list x))))))
 
 
 ;;
@@ -414,7 +426,7 @@
 
 (defun print-statements (statements stream depth)
   (progn
-    (format stream "<statements>")
+    (format stream "<statements>~%")
     (dolist (var (statements-statement* statements))
       (format stream "~a~%" var))
     (format stream "</statements>")))
@@ -422,9 +434,10 @@
 (defun build-statements (input-stream)
   (make-statements 
    :statement*
-   (do ((x (build-statement input-stream) (build-statement input-stream)))
-       ((null x))
-     (collect x))))
+   (let ((s NIL))
+     (do ((x (build-statement input-stream) (build-statement input-stream)))
+	 ((null x) s)
+       (setf s (append s (list x)))))))
 
 
 ;;
@@ -462,6 +475,7 @@
       (foramt stream "~a~%" (build-token "]")))
     (format stream "~a~%" (build-token "="))
     (format stream "~a~%" (letStatement-expression lst))
+    (format stream "~a~%" (build-token ";"))
     (format stream "</letStatement>")))
 
 (defun build-letStatement (input-stream)
@@ -575,17 +589,18 @@
 
 (defun print-doStatement (dst stream depth)
   (progn
-    (format stream "<doStatement>")
+    (format stream "<doStatement>~%")
     (format stream "~a~%" (build-token "do"))
-    (format stream "~a~%" (doStatement-subroutineCall dst))
+    (format stream "~a" (doStatement-subroutineCall dst))
+    (format stream "~a~%" (build-token ";"))
     (format stream "</doStatement>")))
 
 (defun build-doStatement (input-stream)
   (let ((token (next input-stream)))
     (when (and (token-p token) (string= (token-value token) "do"))
-      (consume-one-token)
+      (consume-one-token input-stream)
       (let ((r (build-subroutineCall input-stream)))
-	  (and (consume-one-token :value ";")
+	  (and (consume-one-token input-stream :value ";")
 	       (make-doStatement
 		:subroutineCall r))))))
 
@@ -599,18 +614,19 @@
 
 (defun print-returnStatement (rst stream depth)
   (progn
-    (format stream "<returnStatement>")
+    (format stream "<returnStatement>~%")
     (format stream "~a~%" (build-token "return"))
     (when (returnStatement-expression rst)
       (format stream "~a~%" (returnStatement-expression rst)))
+    (format stream "~a~%" (build-token ";"))
     (format stream "</returnStatement>")))
 
 (defun build-returnStatement (input-stream)
   (let ((token (next input-stream)))
     (when (and (token-p token) (string= (token-value token) "return"))
-      (consume-one-token)
+      (consume-one-token input-stream)
       (let ((r (build-expression input-stream)))
-	(and (consume-one-token :value ";")
+	(and (consume-one-token input-stream :value ";")
 	     (make-returnStatement :expression r))))))
 
 
@@ -652,6 +668,7 @@
   (let ((token (next input-stream)))
     (when (and (token-p token)
 	       (string= "[" (token-value token)))
+      (consume-one-token input-stream)
       (let ((r (build-expression input-stream)))
 	(progn
 	  (consume-one-token input-stream :value "]")
@@ -700,13 +717,13 @@
 	(let ((token (next input-stream)))
 	  (when (and (token-p token)
 		     (or (member (token-type token) '(integerConstant stringConstant))
-			 (keywordConstant? (token-value token))
+			 (keywordConstant? token)
 			 (unaryOp? token)
 			 (string= "(" (token-value token))
 			 (equal 'identifier (token-type token))))
 	    (cond ((member (token-type token) '(integerConstant stringConstant))
-		   (make-term :arg1 token :arg2 NIL))
-		  ((keywordConstant? (token-value token))
+		   (progn (consume-one-token input-stream) (make-term :arg1 token :arg2 NIL)))
+		  ((keywordConstant? token)
 		   (make-term :arg1 (build-keywordConstant input-stream) :arg2 NIL))
 		  ((unaryOp? token)
 		   (make-term :arg1 (build-unaryOp input-stream)
@@ -878,7 +895,7 @@
 (defun build-keywordConstant (input-stream)
   (let ((token (next input-stream)))
     (when (keywordConstant? token)
-      (consume-one-token)
+      (consume-one-token input-stream)
       (make-keywordConstant :kvalue token))))
 
 (defun keywordConstant? (token)
@@ -980,7 +997,8 @@
 (defun stop-char? (ch)
   (or (char= #\newline ch)
       (char= #\space ch)
-      (symbol-char? ch)))
+      (symbol-char? ch)
+      (char= #\" ch)))
 
 (defun collect-to-vector (stream vector &key test)
   (do ((ch (get-next-char stream)
@@ -1007,6 +1025,16 @@
 		 (if (= 0 (length token-v))
 		     (get-next-token-1 stream)
 		     token-v))
+		((char= #\" ch)
+		 (if (= 0 (length token-v))
+		     (progn
+		       (vector-push-extend ch token-v)
+		       (collect-to-vector stream token-v :test #'(lambda (ch) (char= #\" ch)))
+		       (vector-push-extend #\" token-v)
+		       token-v)
+		     (progn
+		       (unread-char ch stream)
+		       token-v)))
 		(T (format T "unknown condition ~%"))))))
 
 (defun get-next-token (stream)
