@@ -120,9 +120,9 @@
     (format stream "~a~%" (build-token "class"))
     (format stream "~a~%" (class-s-className class))
     (format stream "~a~%" (build-token "{"))
-    (dolist (var (class-classVarDec* class))
+    (dolist (var (class-s-classVarDec* class))
       (format stream "~a" var))
-    (dolist (var (class-subroutineDec* class))
+    (dolist (var (class-s-subroutineDec* class))
       (format stream "~a" var))
     (format stream "~a~%" (build-token "}"))
     (format stream "</class>")))
@@ -130,10 +130,15 @@
 (defun build-class (input-stream)
   (let ((token (next input-stream)))
     (when (and (token-p token) (string= (token-value token) "class"))
-      (make-class-s
-       :className (build-className input-stream)
-       :classVarDec* (build-classVarDec* input-stream)
-       :subroutineDec* (build-subroutineDec* input-stream)))))
+      (consume-one-token input-stream)
+      (let ((c (make-class-s
+		:className (build-className input-stream)
+		:classVarDec* (and
+			       (consume-one-token input-stream :value "{")
+			       (build-classVarDec* input-stream))
+		:subroutineDec* (build-subroutineDec* input-stream))))
+	(and (consume-one-token input-stream :value "}")
+	     c)))))
 
 
 ;;
@@ -247,6 +252,12 @@
 	  (build-type input-stream)))))
 
 
+(defun build-subroutineDec* (input-stream)
+  (let ((r NIL))
+    (do ((x (build-subroutineDec input-stream)
+	    (build-subroutineDec input-stream)))
+	((null x) r)
+      (setf r (append r (list x))))))
 
 ;;
 ;; parameterList
@@ -360,7 +371,7 @@
   (let ((token (next input-stream)))
     (when (and (token-p token)
 	       (equal 'identifier (token-type token)))
-      (consume-one-token)
+      (consume-one-token input-stream)
       (make-className :name token))))
 
 
@@ -406,7 +417,7 @@
 	    (let ((token (next input-stream)))
 	      (when (and (token-p token)
 			 (string= (token-value token) ","))
-		(consume-one-token)
+		(consume-one-token input-stream)
 		(build-varName* input-stream)))))))
 
 
@@ -472,7 +483,7 @@
     (when (letStatement-array-expression lst)
       (format stream "~a~%" (build-token "["))
       (format stream "~a~%" (letStatement-array-expression lst))
-      (foramt stream "~a~%" (build-token "]")))
+      (format stream "~a~%" (build-token "]")))
     (format stream "~a~%" (build-token "="))
     (format stream "~a~%" (letStatement-expression lst))
     (format stream "~a~%" (build-token ";"))
@@ -511,7 +522,7 @@
     (format stream "~a~%" (build-token "("))
     (format stream "~a~%" (ifStatement-expression ist))
     (format stream "~a~%" (build-token ")"))
-    (when else-statements
+    (when (ifStatement-else-statements ist)
       (format stream "~a~%" (build-token "else"))
       (format stream "~a~%" (build-token "{"))
       (format stream "~a~%" (ifStatement-else-statements ist))
@@ -870,7 +881,7 @@
 (defun build-unaryOp (input-stream)
   (let ((token (next input-stream)))
     (when (unaryOp? token)
-      (consume-one-token)
+      (consume-one-token input-stream)
       (make-unaryOp :uop token))))
 
 
@@ -979,13 +990,14 @@
 	       (when nch
 		 (cond ((char= nch #\/)
 			(progn (read-char stream nil)
-			       (process-line-comment stream)))
+			       (process-line-comment stream)
+			       #\newline))
 		       ((char= nch #\*)
 			(progn (read-char stream nil)
 			       (process-seg-comment stream)
 			       (pprint "after process seg comment stream")
 			       (get-next-char stream)))
-		       (T (format T "parser error"))))))
+		       (T ch)))))
 	    ((char= ch #\SPACE)
 	     (do ((nch 
 		   (peek-char nil stream nil) 
