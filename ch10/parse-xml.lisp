@@ -104,6 +104,32 @@
 ;; Program structure
 ;;==========================================================
 
+;; TESTING MACRO using in class
+(defmacro define-struct (struct &optional head &rest fields)
+  (let* ((pstr (concatenate 'string "print-" struct))
+	 (pst (intern (string-upcase struct)))
+	 (pfunc (intern (string-upcase pstr))))
+    `(progn
+       (defstruct (,pst (:print-function ,pfunc))
+	 ,@fields)
+       
+       (defun ,pfunc (st stream depth)
+	 (progn 
+	   (when (stringp ,head)
+	     (format stream (concatenate 'string "<" ,head ">")))
+	   (dolist (var ',fields)
+	     (let* ((str (concatenate 'string ,struct "-" (string var)))
+		   (syr (intern (string-upcase str))))
+	       (progn
+		 (format T "str is ~a, sys is ~a~%" str syr)
+	       (if (token-p (funcall syr st))
+		   (format stream "~a~%" (funcall syr st))
+		   (if (listp (funcall syr st))
+		       (dolist (x (funcall syr st))
+			 (format stream "~a" x))
+		       (format stream "~a" (funcall syr st)))))))
+	   (when (stringp ,head)
+	     (format stream (concatenate 'string "</" ,head ">"))))))))
 
 ;;
 ;; class
