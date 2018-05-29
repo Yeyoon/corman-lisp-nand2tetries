@@ -14,7 +14,9 @@
 (defun identifier? (type) (equal type 'identifier))
 
 (defun print-pair (stream pair value)
-  (format stream "<~a>~a</~a>" pair value pair))
+  (progn
+    (fresh-line stream)
+    (format stream "<~a>~a</~a>" pair value pair)))
 
 (defun print-token (token stream depth)
   (when (token-p token)
@@ -80,7 +82,7 @@
   (cond ((integerConstant-string? str-token) 
 	 (make-token :type 'integerConstant :value str-token))
 	((stringConstant-string? str-token)
-	 (make-token :type 'stringConstant :value str-token))
+	 (make-token :type 'stringConstant :value (subseq str-token 1 (- (length str-token) 1))))
 	((identifier-string? str-token)
 	 (make-token :type 'identifier :value str-token))
 	(T 
@@ -142,9 +144,9 @@
 
 (defun print-class (class stream depth)
   (progn
-    (format stream "<class>")
+    (format stream "<class>~%")
     (format stream "~a~%" (build-token "class"))
-    (format stream "~a~%" (class-s-className class))
+    (format stream "~a" (class-s-className class))
     (format stream "~a~%" (build-token "{"))
     (dolist (var (class-s-classVarDec* class))
       (format stream "~a" var))
@@ -244,6 +246,7 @@
 
 (defun print-subroutineDec (subroutineDec stream depth)
   (progn
+    (fresh-line stream)
     (format stream "<subroutineDec>~%")
     (format stream "~a~%" (subroutineDec-con-fun-method subroutineDec))
     (format stream "~a~%" (subroutineDec-void-type subroutineDec))
@@ -294,7 +297,7 @@
 
 (defun print-parameterList (parameterList stream depth)
   (progn
-    (format stream "<parameterList>")
+    (format stream "<parameterList>~%")
     (dolist (x (parameterList-type-varName parameterList))
       (format stream "~a~%" (first x))
       (format stream "~a~%" (second x))
@@ -305,7 +308,7 @@
 (defun build-parameterList-1 (input-stream)
   (let ((type (build-type input-stream)))
     (when (Types-p type)
-      (consume-ont-token)
+      (consume-one-token input-stream)
       (cons (list type (build-varName input-stream))
 	    (let ((token (next input-stream)))
 	      (when (and (token-p token) (string= (token-value token) ","))
@@ -687,7 +690,8 @@
   (progn
     (format stream "<expression>~%")
     (dolist (var (expression-term* exp))
-      (format stream "~a~%" var))
+      (format stream "~a" var))
+    (fresh-line stream)
     (format stream "</expression>")))
 
 (defun build-expression-1 (input-stream)
@@ -745,8 +749,9 @@
 	      (format stream "~a" (build-token "]")))
 	    ;; it is unaryOp term
 	    (progn
-	      (format stream "~a~%" (term-arg1 term))
+	      (format stream "~a" (term-arg1 term))
 	      (format stream "~a" (term-arg2 term)))))
+    (fresh-line stream)
     (format stream "</term>")))
 
 (defun build-term (input-stream)
@@ -767,8 +772,7 @@
 		   (make-term :arg1 (build-keywordConstant input-stream) :arg2 NIL))
 		  ((unaryOp? token)
 		   (make-term :arg1 (build-unaryOp input-stream)
-			      :arg2 (and (consume-one-token input-stream)
-					 (build-term input-stream))))
+			      :arg2 (build-term input-stream)))
 		  ((string= "(" (token-value token))
 		   (progn
 		     (consume-one-token input-stream)
@@ -855,7 +859,7 @@
 
 (defun print-expressionList (expl stream depth)
   (progn
-    (format stream "<expressionList>")
+    (format stream "<expressionList>~%")
     (let ((r (last (expressionList-expression* expl))))
       (dolist (v (expressionList-expression* expl))
 	(format stream "~a~%" v)
@@ -1083,3 +1087,29 @@
     (when token-str
       (build-token token-str))))
 
+
+
+
+;;;
+;;; interfaces for processing files
+;;;
+
+(defun build-class-from-file (filename)
+  (let* ((i (search "." filename))
+	 (temp (subseq filename 0 i))
+	 (ofile (concatenate 'string temp "-v.xml")))
+    (with-open-file (out ofile :direction :output :if-exists :supersede)
+      (format out "~a"
+	      (with-open-file (in filename :direction :input :if-does-not-exist nil)
+		(build-class in))))))
+
+
+(defun run (dir)
+  (let ((files (directory (concatenate 'string dir "/*.jack"))))
+    (dolist (file files)
+      (let ((name (namestring file)))
+	(when (and (> (length name) 5)
+		   (string= ".jack" (subseq name (- (length name) 5))))
+	  (setf *current-token* NIL *peek-token* NIL)
+	  (build-class-from-file name))))))
+	 
