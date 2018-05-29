@@ -107,6 +107,14 @@
        (string= (token-value token) str)))
 
 
+(defun flatten-x (a)
+  (if (null a)
+      NIL
+      (let ((aa (first a)))
+	(cons (first aa)
+	      (cons (second aa)
+		    (flatten-x (rest a)))))))
+
 (defmacro define-struct (struct predecate &rest fields)
   (let* ((prints (concatenate 'string "print-" (string struct)))
 	 (pf (intern (string-upcase prints)))
@@ -122,7 +130,7 @@
 	 (progn
 	   (fresh-line stream)
 	   (dolist (x ',fields)
-	     (let* ((xx (concatenate 'string (string ,struct) "-" (string x)))
+	     (let* ((xx (concatenate 'string (string ',struct) "-" (string x)))
 		    (xxx (intern (string-upcase xx))))
 	       (let ((v (xxx s)))
 		 (cond ((token-p v)
@@ -134,14 +142,16 @@
        (defun ,bf (input-stream)
 	 (when (,predecate input-stream)
 	   (,ms
-	    ,(mapcar fields
-		     #'(lambda (field)
-			 (let* ((x (concatenate 'string ":" (string field)))
-				(sx (intern (string-upcase x)))
-				(y (concatenate 'string "build-" (string field)))
-				(bx (intern (string-upcase y))))
-			   (list sx bx))))))))))
-
+	    ,@(let ((tm (mapcar 
+			 #'(lambda (x) 
+			     (let* ((y (concatenate 'string ":" (string x)))
+				    (yy (intern y))
+				    (z (concatenate 'string "build-" (string x)))
+				    (by (intern (string-upcase z))))
+			       (list yy by)))
+			 fields)))
+		   (flatten-x tm))))))))
+		      
 
 
 
