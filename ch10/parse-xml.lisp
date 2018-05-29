@@ -301,17 +301,17 @@
     (dolist (x (parameterList-type-varName parameterList))
       (format stream "~a~%" (first x))
       (format stream "~a~%" (second x))
-      (when (not (equal x (last (parameterList-typevarName parameterList))))
+      (when (not (equal x (first (last (parameterList-type-varName parameterList)))))
 	(format stream "~a~%" (build-token ","))))
     (format stream "</parameterList>~%")))
 
 (defun build-parameterList-1 (input-stream)
   (let ((type (build-type input-stream)))
     (when (Types-p type)
-      (consume-one-token input-stream)
       (cons (list type (build-varName input-stream))
 	    (let ((token (next input-stream)))
 	      (when (and (token-p token) (string= (token-value token) ","))
+		(consume-one-token input-stream)
 		(build-parameterList-1 input-stream)))))))
 		       
 (defun build-parameterList (input-stream)
@@ -873,7 +873,7 @@
       (cons v 
 	    (let ((token (next input-stream)))
 	      (when (and (token-p token) (string= (token-value token) ","))
-		(consume-one-token)
+		(consume-one-token input-stream)
 		(build-expressionList-1 input-stream)))))))
 
 (defun build-expressionList (input-stream)
