@@ -115,6 +115,31 @@
 	      (cons (second aa)
 		    (flatten-x (rest a)))))))
 
+(defmacro define-build-token (var)
+  (LET* ((name (concatenate 'string "build-" var))
+	 (np (intern (string-upcase name))))
+    `(defun ,np (input-stream)
+       	 (let ((token (next input-stream)))
+	   (when (token-p token)
+	     (cond ((and (string= "ic" ,var) (equal 'integerConstant (token-type token)))
+		    token)
+		   ((and (string= "id" ,var) (equal 'identifier (token-type token)))
+		    token)
+		   ((and (string= "sc" ,var) (equal 'stringConstant (token-type token)))
+		    token)
+		   ((=? token ,var) token)
+		   (T (format T "TOKEN NOT MATCH var ~a token ~a~%" ,var token))))))))
+
+
+(defun define-build-list (tlist)
+  (mapcar #'(lambda (x) (define-build-token x)) tlist))
+
+(defun special? (str)
+  
+
+(defun built-token-special (input-stream str)
+  (build-token str))
+
 (defmacro define-struct (struct predecate &rest fields)
   (let* ((prints (concatenate 'string "print-" (string struct)))
 	 (pf (intern (string-upcase prints)))
@@ -148,13 +173,11 @@
 				    (yy (intern y))
 				    (z (concatenate 'string "build-" (string x)))
 				    (by (intern (string-upcase z))))
-			       (list yy by)))
+			       (if (special? (string x))
+				   (list yy `(build-token-special input-stream  ,(string x)))
+				   (list yy (by input-stream)))))
 			 fields)))
 		   (flatten-x tm))))))))
-		      
-
-
-
 ;;;
 ;;; testing 
 ;;;
