@@ -13,10 +13,16 @@
 (defun stringConstant? (type) (equal type 'stringConstant))
 (defun identifier? (type) (equal type 'identifier))
 
+(defun t-v (value)
+  (cond ((string= value "<") "&lt;")
+	((string= value ">") "&gt;")
+	((string= value "&") "&amp;")
+	(T value)))
+
 (defun print-pair (stream pair value)
   (progn
     (fresh-line stream)
-    (format stream "<~a>~a</~a>" pair value pair)))
+    (format stream "<~a>~a</~a>" pair (t-v value) pair)))
 
 (defun print-token (token stream depth)
   (when (token-p token)
@@ -144,6 +150,7 @@
 
 (defun print-class (class stream depth)
   (progn
+    (fresh-line stream)
     (format stream "<class>~%")
     (format stream "~a~%" (build-token "class"))
     (format stream "~a" (class-s-className class))
@@ -180,6 +187,7 @@
 
 (defun print-classVarDec (classVarDec stream depth)
   (progn
+    (fresh-line stream)
     (format stream "<classVarDec>~%")
     (format stream "~a~%" (classVarDec-static-field classVarDec))
     (format stream "~a" (classVarDec-type classVarDec))
@@ -249,7 +257,7 @@
     (fresh-line stream)
     (format stream "<subroutineDec>~%")
     (format stream "~a~%" (subroutineDec-con-fun-method subroutineDec))
-    (format stream "~a~%" (subroutineDec-void-type subroutineDec))
+    (format stream "~a" (subroutineDec-void-type subroutineDec))
     (format stream "~a" (subroutineDec-subroutineName subroutineDec))
     (format stream "~a~%" (build-token "("))
     (format stream "~a" (subroutineDec-parameterList subroutineDec))
@@ -299,10 +307,10 @@
   (progn
     (format stream "<parameterList>~%")
     (dolist (x (parameterList-type-varName parameterList))
-      (format stream "~a~%" (first x))
-      (format stream "~a~%" (second x))
+      (format stream "~a" (first x))
+      (format stream "~a" (second x))
       (when (not (equal x (first (last (parameterList-type-varName parameterList)))))
-	(format stream "~a~%" (build-token ","))))
+	(format stream "~a" (build-token ","))))
     (format stream "</parameterList>~%")))
 
 (defun build-parameterList-1 (input-stream)
@@ -360,6 +368,7 @@
 
 (defun print-varDec (varDec stream depth)
   (progn
+    (fresh-line stream)
     (format stream "<varDec>~%")
     (format stream "~a~%" (build-token "var"))
     (format stream "~a" (varDec-type varDec))
@@ -611,16 +620,16 @@
 (defun build-whileStatement (input-stream)
   (let ((token (next input-stream)))
     (when (and (token-p token) (string= (token-value token) "while"))
-      (consume-one-token)
+      (consume-one-token input-stream)
       (next input-stream)
-      (consume-one-token :value "(")
+      (consume-one-token input-stream :value "(")
       (make-whileStatement
        :expression (let ((r (build-expression input-stream)))
-		     (progn (consume-one-token :value ")")
+		     (progn (consume-one-token input-stream :value ")")
 			    r))
-       :statements (and (consume-one-token "{")
+       :statements (and (consume-one-token input-stream :value "{")
 			(let ((r (build-statements input-stream)))
-			  (progn (consume-one-token "}")
+			  (progn (consume-one-token input-stream :value "}")
 				 r)))))))
 
 ;;
@@ -863,7 +872,7 @@
     (let ((r (last (expressionList-expression* expl))))
       (dolist (v (expressionList-expression* expl))
 	(format stream "~a~%" v)
-	(when (not (equal v r))
+	(when (not (equal v (first r)))
 	  (format stream "~a~%" (build-token ",")))))
     (format stream "</expressionList>")))
 
@@ -977,10 +986,9 @@
 
 (defun consume-one-token (stream &key value)
   (let ((token (next stream)))
-    (progn (format T "token is ~a, value is ~a~%" token value)
     (and (token-p token)
          (or (setf *current-token* NIL)
-             (if value (=? token value) T))))))
+             (if value (=? token value) T)))))
 	  
 
 
