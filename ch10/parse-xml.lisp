@@ -1050,6 +1050,7 @@
 (defun stop-char? (ch)
   (or (char= #\newline ch)
       (char= #\space ch)
+      (char= #\tab ch)
       (symbol-char? ch)
       (char= #\" ch)))
 
@@ -1074,7 +1075,8 @@
 		       (unread-char ch stream)
 		       token-v)))
 		((or (char= #\space ch) 
-		     (char= #\newline ch))
+		     (char= #\newline ch)
+		     (char= #\tab ch))
 		 (if (= 0 (length token-v))
 		     (get-next-token-1 stream)
 		     token-v))
