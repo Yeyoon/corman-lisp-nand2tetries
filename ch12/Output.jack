@@ -209,8 +209,12 @@ class Output {
 			let tem = cm[i];
 			while (j < 8) {
 				if (~((tem & 1) = 0)) {
-					do Screen.drawPixel(y,x);
+					do Screen.setColor(true);
+				}else {
+					do Screen.setColor(false);
 				}
+				
+				do Screen.drawPixel(y,x);
 				
 				let y = y + 1;
 				let tem = tem / 2;
@@ -256,10 +260,10 @@ class Output {
     /** Displays the given integer starting at the cursor location,
      *  and advances the cursor appropriately. */
     function void printInt(int i) {
-		var String str;
+ 		var String str;
 		let str = String.new(10);
 		do str.setInt(i);
-		do Output.printString(str);
+		do Output.printString(str); 
 		return;
     }
 
