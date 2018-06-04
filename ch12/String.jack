@@ -13,18 +13,27 @@
 class String {
 	field Array str;
 	field int index;
+	field int mlen;
 
     /** constructs a new empty string with a maximum length of maxLength
      *  and initial length of 0. */
     constructor String new(int maxLength) {
+		if (0 = maxLength){
+			let mlen = 0;
+			return this;
+		}
 		let str = Array.new(maxLength);
 		let index = 0;
+		let mlen = maxLength;
 		
 		return this;
     }
 
     /** Disposes this string. */
     method void dispose() {
+		if (~(mlen = 0)){
+			do str.dispose();
+		}
 		return;
     }
 
@@ -48,7 +57,7 @@ class String {
     method String appendChar(char c) {
 		let str[index] = c;
 		let index = index + 1;
-		return str;
+		return this;
     }
 
     /** Erases the last character from this string. */
@@ -63,9 +72,16 @@ class String {
     method int intValue() {
 		var int i;
 		var int charv;
+		var boolean neg;
 		
+		let neg = false;
 		let i = 0;
 		let charv = 0;
+		if (str[i] = 45) {
+			let neg = true;
+			let i = 1;
+		}
+		
 		while (i < index) {
 			if (str[i] < 48) {
 				 return charv;
@@ -76,20 +92,55 @@ class String {
 			}
 			
 			let charv = charv * 10 + str[i] - 48;
+			let i = i + 1;
 		}
 		
+		if (neg) {
+			let charv = -charv;
+		}
 		return charv;
     }
 
     /** Sets this string to hold a representation of the given value. */
     method void setInt(int val) {
 		var int ch;
+		var int i;
+		var int j;
+		var boolean neg;
+		let index = 0;
 		
-		while (~(val = 0)) {
-			let ch = val & 10;
-			do appendChar(ch + 48);
+		let neg = false;
+		if (val < 0){
+			let val = -val;
+			let neg = true;
+			do appendChar(45);
+		}
+		
+		while (~(val < 10)) {
+			let ch = val - ((val / 10) * 10);
+			do appendChar(ch+48);
 			let val = val / 10;
 		}
+		
+		do appendChar(val + 48);
+		
+		let i = 0;
+		let j = index - 1;
+		
+		if (neg) {
+			let i = 1;
+		}
+		
+		while (i < j) {
+			let ch = str[i];
+			let str[i] = str[j];
+			let str[j] = ch;
+			
+			let i = i + 1;
+			let j = j - 1;
+		}
+		
+		return;
     }
 
     /** Returns the new line character. */
