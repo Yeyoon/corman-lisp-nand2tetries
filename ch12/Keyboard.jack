@@ -38,6 +38,7 @@ class Keyboard {
 		var int keyV;
 		
 		let keyV = Memory.peek(addr);
+		
 		return keyV;
     }
 
@@ -55,9 +56,15 @@ class Keyboard {
 		while (k = 0) {
 			let k = Keyboard.keyPressed();
 		}
-		do s.setInt(k);
+		
+		while (~(Keyboard.keyPressed() = 0)) {
+		}
+		
+		do s.appendChar(k);
 		
 		do Output.printString(s);
+		
+		do s.dispose();
 		return k;
     }
 
@@ -70,23 +77,20 @@ class Keyboard {
 		var String buf;
 		var char c;
 		
+		let buf = String.new(64);
 		do Output.printString(message);
 		let c = Keyboard.readChar();
-		do Output.printInt(c);
-		do Output.println();
 		while (~(c = 128)) {
 			if (c = String.backSpace()) {
 				do buf.eraseLastChar();
+				do Output.backSpace();
 			}else {
 				do buf.appendChar(c);
 			}
 			
 			let c = Keyboard.readChar();
-			do Output.printInt(c);
-			do Output.println();
 		}
-		do Output.println();
-		do Output.printString(buf);
+
 		return buf;
     }   
 
