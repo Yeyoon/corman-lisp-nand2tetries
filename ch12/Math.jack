@@ -9,6 +9,7 @@
  */
 class Math {
 	static Array a;
+	static Array help;
 
     /** Initializes the library. */
     function void init() {
@@ -30,6 +31,8 @@ class Math {
 		let a[13] = 8192;
 		let a[14] = 16384;
 		let a[15] = ~32767;
+		
+		let help = Array.new(16);
 		return;
     }
 
@@ -81,7 +84,6 @@ class Math {
 		var int yy;
 		var int i;
 		var int temp;
-		var Array help;
 		
 		let xx = Math.abs(x);
 		let yy = Math.abs(y);
@@ -94,8 +96,6 @@ class Math {
 		if (xx = 0){
 			return 0;
 		}
-		
-		let help = Array.new(16);
 		
 		let i = 0;
 		let help[i] = a[i] * yy;
