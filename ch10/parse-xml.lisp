@@ -1129,13 +1129,17 @@
 ;;; chapter 11 contents
 ;;;
 
+;; basic
+(defmacro append-string (&rest strs)
+  `(concatenate 'string ,@strs))
+
 (defun codeWrites-expression (obj)
   (let* ((terms (expression-term* obj))
 	 (len (length terms)))
     (when terms
       (if (= 1 len)
 	  (codeWrites-term (first terms))
-	  (progn
+	  (append-string
 	    (codeWrites-term (first terms))
 	    (codeWrites-term (first (last terms)))
 	    (codeWrites-op (second terms)))))))
@@ -1147,7 +1151,7 @@
 	(if (varName-p arg1)
 	    ;; varName [xxx]
 	    (codeWrite-array arg1 arg2)
-	    (progn
+	    (append-string
 	      (codeWrites-term arg2)
 	      (codeWrites-uop arg1)))
 	(cond ((integerConstant-p arg1)
