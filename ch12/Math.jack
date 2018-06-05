@@ -8,10 +8,28 @@
  * Note: Jack compilers implement multiplication and division using OS method calls.
  */
 class Math {
+	static Array a;
 
     /** Initializes the library. */
     function void init() {
 		//do Output.printString("Math class init");
+		let a = Array.new(16);
+		let a[0] = 1;
+		let a[1] = 2;
+		let a[2] = 4;
+		let a[3] = 8;
+		let a[4] = 16;
+		let a[5] = 32;
+		let a[6] = 64;
+		let a[7] = 128;
+		let a[8] = 256;
+		let a[9] = 512;
+		let a[10] = 1024;
+		let a[11] = 2048;
+		let a[12] = 4096;
+		let a[13] = 8192;
+		let a[14] = 16384;
+		let a[15] = ~32767;
 		return;
     }
 
@@ -63,9 +81,11 @@ class Math {
 		var int yy;
 		var int i;
 		var int temp;
+		var Array help;
 		
 		let xx = Math.abs(x);
 		let yy = Math.abs(y);
+		let temp = 0;
 		
 		if (xx < yy) {
 			return 0;
@@ -75,27 +95,46 @@ class Math {
 			return 0;
 		}
 		
-		let i = 1;
-		let temp = yy;
+		let help = Array.new(16);
 		
-		while ((temp - xx) < 0){
-			let temp = temp + yy;
+		let i = 0;
+		let help[i] = a[i] * yy;
+		
+		while (xx > help[i]) {
 			let i = i + 1;
+			let help[i] = a[i] * yy;
+		}
+		
+		let xx = xx - help[i-1];
+		let temp = temp + a[i - 1];
+		
+		let i = 0;
+		while (xx > help[0]){
+			let i = 0;
+			while (xx > help[i]) {
+				let i = i + 1;
+			}
+			let xx = xx - help[i-1]; 
+			let temp = temp + a[i - 1];
+		}
+		
+		if (xx = help[0]) {
+			let temp = temp + 1;
 		}
 		
 		if (x < 0 ) {
 			if (y > 0) {
-				return -i;
+				return -temp;
 			}
 		}
 		
 		if (y < 0) {
 			if ( x > 0) {
-				return -i;
+				return -temp;
 			}
 		}
 		
-		return i;
+		return temp;
     }
 
     /** Returns the integer part of the square root of x. */
