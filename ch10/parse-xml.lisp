@@ -1123,3 +1123,93 @@
 	  (setf *current-token* NIL *peek-token* NIL)
 	  (build-class-from-file name))))))
 	 
+
+
+;;;
+;;; chapter 11 contents
+;;;
+
+(defun codeWrites-expression (obj)
+  (let* ((terms (expression-term* obj))
+	 (len (length terms)))
+    (when terms
+      (if (= 1 len)
+	  (codeWrites-term (first terms))
+	  (progn
+	    (codeWrites-term (first terms))
+	    (codeWrites-term (first (last terms)))
+	    (codeWrites-op (second terms)))))))
+
+(defun codeWrites-term (obj)
+  (let ((arg1 (term-arg1 obj))
+	(arg2 (term-arg2 obj)))
+    (if arg2
+	(if (varName-p arg1)
+	    ;; varName [xxx]
+	    (codeWrite-array arg1 arg2)
+	    (progn
+	      (codeWrites-term arg2)
+	      (codeWrites-uop arg1)))
+	(cond ((integerConstant-p arg1)
+	       (codeWrites-integerConstant arg1))
+	      ((stringConstant-p arg1)
+	       (codeWrites-stringConstant arg1))
+	      ((keywordConstant-p arg1)
+	       (codeWrites-keywordConstant arg1))
+	      ((varName-p arg1)
+	       (codeWrites-varName arg1))
+	      ((subroutineCall-p arg1)
+	       (codeWrites-subroutineCall arg1))
+	      ((expression-p arg1)
+	       (codeWrites-expression arg1))
+	      (T (format T "something is wrong for obj ~a~%" arg1))))))
+
+
+(defun codeWrites-op (op)
+  (let ((v (op-op op)))
+    (when (token-p v)
+      (cond ((=? v "+") (format NIL "add~%"))
+	    ((=? v "-") (format NIL "sub~%"))
+	    ((=? v "*") (format NIL "call Math.multiply 2~%"))
+	    ((=? v "/") (format NIL "call Math.divide 2 ~%"))
+	    ((=? v "|") (format NIL "or~%"))
+	    ((=? v "&") (format NIL "and~%"))
+	    ((=? v "<") (format NIL "lg~%"))
+	    ((=? v ">") (format NIL "gt~%"))
+	    ((=? v "=") (format NIL "eq~%"))
+	    (T (format T "wrong op ~a~%" v))))))
+
+(defun integerConstant-p (token)
+  (and (token-p token)
+       (equal (token-type token) 'integerConstant)))
+
+(defun codeWrites-integerConstant (intc)
+  (when (integerConstant-p intc)
+    (format NIL "push constant ~a~%" (token-value intc))))
+
+(defun stringConstant-p (token)
+  (and (token-p token)
+       (equal (token-type token) 'stringConstant)))
+
+(defun codeWrites-stringConstant (token)
+  (when (stringConstant-p token)
+    (format NIL "push string Constant ~a~%" (token-value token))))
+
+(defun keywordConstant-p (token)
+  (and (token-p token)
+       (member (token-value token) '("true" "false" "null" "this") :test #'equal)))
+
+(defun codeWrites-keywordConstant (token)
+  (when (keywordConstant-p token)
+    (cond ((=? token "true") (format NIL "push constant 0~%"))
+	  ((=? token "false") (format NIL "push constant -1~%"))
+	  ((=? token "null") (format NIL "push constant 0~%"))
+	  (T (format NIL "push this 0~%")))))
+
+(defun codeWrites-varName (varName)
+  (format NIL "push local ~a~%" (token-value (varName-name varName))))
+
+(defun codeWrites-subroutineCall (sbr)
+  (format NIL "gen subroutineCall ~a" sbr))
+
+
