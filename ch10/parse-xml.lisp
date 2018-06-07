@@ -1130,8 +1130,66 @@
 ;;;
 
 ;; basic
-(defmacro append-string (&rest strs)
-  `(concatenate 'string ,@strs))
+(defun append-string-1 (lst)
+  (let ((r ""))
+    (progn
+      (dolist (x lst)
+	(setf r (concatenate 'string r x)))
+      r)))
+
+;; symbol table
+(defstruct entry
+  name
+  type
+  kind
+  index)
+
+(defparameter *class-symbol-table* NIL)
+(defparameter *method-symbol-table* NIL)
+
+(defun set-current-mtable (m)
+  (setf *method-symbol-table* m))
+
+(defun get-current-mtable ()
+  *method-symbol-table*)
+
+(defun set-current-ctable (m)
+  (setf *class-symbol-table* m))
+
+(defun get-current-ctable ()
+  *class-symbol-table*)
+
+(defun add-entry-to-stable (entry table)
+  (setf table (append table (list entry))))
+
+(defun get-entry-from-stable (name)
+  (let ((e (find-if #'(lambda (e) (string= name (entry-name e))) *method-symbol-table*)))
+    (if e e
+	(find-if #'(lambda (e) (string= name (entry-name e)) *class-symbol-table*)))))
+
+
+(defun get-new-index-from-stable (kind table)
+  (let ((index 0))
+    (progn
+      (dolist (x table)
+	(when (string= (entry-index x) kind)
+	  (setf index (+ 1 (entry-index x)))))
+      index)))
+
+(defun get-seg-from-symbol-table (name)
+  (let ((e (get-entry-from-stable name)))
+    (when e
+      (let ((kind (entry-kind e)))
+	(cond ((string= kind "field") "this")
+	      ((string= kind "var") "local")
+	      (T (entry-kind e)))))))
+
+(defun get-index-from-symbol-table (name)
+  (let ((e (get-entry-from-stable name)))
+    (when e
+      (entry-index e))))
+
+
 
 (defun codeWrites-expression (obj)
   (let* ((terms (expression-term* obj))
@@ -1211,9 +1269,64 @@
 	  (T (format NIL "push this 0~%")))))
 
 (defun codeWrites-varName (varName)
-  (format NIL "push local ~a~%" (token-value (varName-name varName))))
+  (let* ((name (varName-name varName))
+	 (seg (get-seg-from-symbol-table name))
+	 (index (get-index-from-symbol-table name)))
+  (format NIL "push ~a ~a~%" seg index)))
 
 (defun codeWrites-subroutineCall (sbr)
-  (format NIL "gen subroutineCall ~a" sbr))
+  (let ((cvname (subroutineCall-classVarName sbr))
+	(sbname (subroutineCall-subroutineName sbr))
+	(exp (subroutineCall-expressionList sbr)))
+    (append-string
+      (if cvname (codeWrites-varName cvname) "")
+      (append-string-1 (mapcar #'(lambda (x) (codeWrites-expression x)) exp))
+      (if (class-name? cvname)
+	  (format NIL "call ~a.~a~%" (token-value cvname) (token-value sbname))
+	  (format NIL "call ~a.~a~%" (current-class-name) (token-value sbname))))))
 
 
+;;;
+;;; statements
+;;;
+
+(defun codeWrites-statements (sts)
+  (append-string-1
+   (mapcar #'(lambda (st) (codeWrites-statement st)) (statements-statement* sts))))
+
+(defun codeWrites-statement (st)
+  (cond ((letStatement-p st) (codeWrites-letStatement st))
+	((ifStatement-p st) (codeWrites-ifStatement st))
+	((whileStatement-p st) (codeWrites-whileStatement st))
+	((doStatement-p st) (codeWrites-doStatement st))
+	((returnStatement-p st) (codeWrites-returnStatement st))
+	(T (format NIL "unknown statement ~a" st))))
+
+;;
+;; let statement
+;;
+(defun codeWrites-letStatement (st)
+  (let ((vname (letStatement-varName st))
+	(aexp (letStatement-array-expression st))
+	(exp (letStatement-expression st)))
+    (append-string
+     (codeWrites-expression exp)
+     (codeWrites-varName vname)
+     (when aexp
+       (append-string (codeWrites-expression aexp)
+		      (format NIL "add~%")))
+     (format NIL "pop pointer 1~%")
+     (format NIL "pop that 0~%"))))
+
+
+;;
+;; if statement
+;;
+;; 
+(defun codeWrites-ifStatement (ist)
+  (let ((exp (ifStatement-expression ist))
+	(ifst (ifStatement-if-statements ist))
+	(ests (ifStatement-else-statements ist)))
+    
+    
+    
