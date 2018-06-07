@@ -221,7 +221,7 @@
 
 ;;
 ;; type
-;; 'int' | 'char' | 'boolean' | 'class' | className
+;; 'int' | 'char' | 'boolean'  | className
 ;;
 (defstruct (types (:print-function print-type))
   type)
@@ -1147,17 +1147,20 @@
 (defparameter *class-symbol-table* NIL)
 (defparameter *method-symbol-table* NIL)
 
-(defun set-current-mtable (m)
-  (setf *method-symbol-table* m))
+(defparameter *current-method-name* NIL)
+(defparameter *current-class-name* NIL)
 
-(defun get-current-mtable ()
-  *method-symbol-table*)
+(defun set-current-method-name (m)
+  (setf *current-method-name* m))
 
-(defun set-current-ctable (m)
-  (setf *class-symbol-table* m))
+(defun get-current-method-name ()
+  *current-method-name*)
 
-(defun get-current-ctable ()
-  *class-symbol-table*)
+(defun set-current-class-name (m)
+  (setf *current-class-name* m))
+
+(defun get-current-class-name ()
+  *current-class-name*)
 
 (defun add-entry-to-stable (entry table)
   (setf table (append table (list entry))))
@@ -1189,7 +1192,18 @@
     (when e
       (entry-index e))))
 
-
+(defun add-symbol-entry (name type kind)
+  (let ((table (if *current-method-name* 
+		   *method-symbol-table*
+		   *class-symbol-table*))
+	(index (get-new-index-from-stable kind table)))
+    (add-entry-to-stable
+     (make-entry :name name
+		 :type type
+		 :kind kind
+		 :index index)
+     table)))
+    
 
 (defun codeWrites-expression (obj)
   (let* ((terms (expression-term* obj))
@@ -1339,15 +1353,89 @@
   (let ((exp (ifStatement-expression ist))
 	(ifst (ifStatement-if-statements ist))
 	(ests (ifStatement-else-statements ist))
-	(fasle-label (gen-if-label)))
+	(true-label (gen-if-label T))
+	(false-label (gen-if-label)))
     (append-string
      (codeWrites-expression exp)
      (format NIL "not~%")
      (format NIL "if-goto ~a~%" false-label)
      (codeWrites-statements ifst)
+     (when ests
+       (format NIL "if-goto ~a~%" true-label))
      (format NIL "label ~a~%" false-label)
      (when ests
-       (codeWrites-statements ests)))
+       (codeWrites-statements ests))
+     (when ests
+       (format NIL "label ~a~%" true-label)))))
+
+
+;;
+;; while statements
+;;
+(defun codeWrites-whileStatement (wst)
+  (let ((exp (whileStatement-expression wst))
+	(sts (whileStatement-statements wst))
+	(true-label (gen-if-label T))
+	(false-label (gen-if-label)))
+    (append-string
+     (format NIL "label ~a~%" true-label)
+     (codeWrites-expression exp)
+     (format NIL "not~%")
+     (format NIL "if-goto ~a~%" false-label)
+     (codeWrites-statements sts)
+     (format NIL "goto ~a~%" true-label)
+     (format NIL "label ~a~%" false-label))))
+
+
+;;
+;; do Statements
+;;
+(defun codeWrites-doStatement (dst)
+  (let ((sbcall (doStatement-subroutineCall dst)))
+    (codeWrites-subroutineCall sbcall)))
+
+;;
+;; return Statement
+;;
+(defun codeWrites-returnStatement (rst)
+  (let ((exp (returnStatement-expression rst)))
+    (if exp
+	(append-string
+	 (codeWrites-expression exp)
+	 (format NIL "return~%"))
+	(append-string
+	 (format NIL "push constant 0~%")
+	 (format NIL "return~%")))))
+
+
+;;
+;; varDec
+;;
+(defun codeWrites-varDec (vdc)
+  (let ((type (varDec-type vdc))
+	(vnames (varDec-varName vdc)))
+    (dolist (v vnames)
+      (add-symbol-entry (varName-name v)
+			(types-type type)
+			"var" ))))
+
+
+;;
+;; subroutineDec
+;;
+(defun codeWrites-subroutineDec (sdc)
+  (let ((cfm (subroutineDec-con-fun-method sdc))
+	(vt (subroutineDec-void-type sdc))
+	(sname (subroutineDec-subroutineName sdc))
+	(sbody (subroutineDec-subroutineBody sdc))
+	(plst (subroutineDec-parameterList sdc)))
+    (progn
+      (setf *current-method-name* (token-value sname))
+      (let* ((
+      
+			
+		       
+    
 
 	 
     
