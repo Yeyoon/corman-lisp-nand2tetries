@@ -1323,10 +1323,33 @@
 ;; if statement
 ;;
 ;; 
+(defparameter *true-index* -1)
+(defparameter *false-index* -1)
+
+(defun gen-if-label (&optional true)
+  (if true
+      (progn
+	(setf *true-index* (+ 1 *true-index*))
+	(format NIL "IF-TRUE~a" *true-index*))
+      (progn
+	(setf *false-index* (+ 1 *false-index*))
+	(format NIL "IF-FALSE~a" *false-index*))))
+
 (defun codeWrites-ifStatement (ist)
   (let ((exp (ifStatement-expression ist))
 	(ifst (ifStatement-if-statements ist))
-	(ests (ifStatement-else-statements ist)))
+	(ests (ifStatement-else-statements ist))
+	(fasle-label (gen-if-label)))
+    (append-string
+     (codeWrites-expression exp)
+     (format NIL "not~%")
+     (format NIL "if-goto ~a~%" false-label)
+     (codeWrites-statements ifst)
+     (format NIL "label ~a~%" false-label)
+     (when ests
+       (codeWrites-statements ests)))
+
+	 
     
     
     
