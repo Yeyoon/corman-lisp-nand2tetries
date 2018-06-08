@@ -766,7 +766,6 @@
 (defun build-term (input-stream)
   (let ((sbc (build-subroutineCall input-stream)))
     (if sbc (progn
-        (format T "sbc is ~a" sbc)
 	(make-term :arg1 sbc :arg2 NIL))
 	(let ((token (next input-stream)))
 	  (when (and (token-p token)
@@ -1012,7 +1011,6 @@
 	  (process-seg-comment stream)
 	  (let ((nch (peek-char nil stream nil)))
 	    (when nch
-	      (format T "ch is ~a nch is ~a ~%" ch nch)
 	      (if (char/= nch #\/)
 		  (process-seg-comment stream)
 		  (read-char stream nil))))))))
@@ -1036,7 +1034,6 @@
 		       ((char= nch #\*)
 			(progn (read-char stream nil)
 			       (process-seg-comment stream)
-			       (pprint "after process seg comment stream")
 			       (get-next-char stream)))
 		       (T ch)))))
 	    ((char= ch #\SPACE)
@@ -1166,7 +1163,9 @@
   *current-class-name*)
 
 (defun add-entry-to-stable (entry table)
-  (setf table (append table (list entry))))
+  (if table
+      (setf *method-symbol-table* (append *method-symbol-table* (list entry)))
+      (setf *class-symbol-table* (append *class-symbol-table* (list entry)))))
 
 (defun get-entry-from-stable (name)
   (let ((e (find-if #'(lambda (e) (string= name (entry-name e))) *method-symbol-table*)))
@@ -1178,17 +1177,20 @@
   (let ((index 0))
     (progn
       (dolist (x table)
-	(when (string= (entry-index x) kind)
+	(when (string= (entry-kind x) kind)
 	  (setf index (+ 1 (entry-index x)))))
       index)))
 
 (defun get-seg-from-symbol-table(name)
+  (progn
+    (pprint *method-symbol-table*)
+    (pprint *class-symbol-table*)
   (let ((e (get-entry-from-stable name)))
     (when e
       (let ((kind (entry-kind e)))
 	(cond ((string= kind "field") "this")
 	      ((string= kind "var") "local")
-	      (T (entry-kind e)))))))
+	      (T (entry-kind e))))))))
 
 (defun get-index-from-symbol-table (name)
   (let ((e (get-entry-from-stable name)))
@@ -1196,16 +1198,16 @@
       (entry-index e))))
 
 (defun add-symbol-entry (name type kind)
-  (let ((table (if *current-method-name* 
-		   *method-symbol-table*
-		   *class-symbol-table*))
-	(index (get-new-index-from-stable kind table)))
+  (let* ((table (if *current-method-name* 
+		    *method-symbol-table*
+		    *class-symbol-table*))
+	 (index (get-new-index-from-stable kind table)))
     (add-entry-to-stable
      (make-entry :name name
 		 :type type
 		 :kind kind
 		 :index index)
-     table)))
+     *current-method-name*)))
     
 
 (defun codeWrites-expression (obj)
@@ -1218,6 +1220,12 @@
 	    (codeWrites-term (first terms))
 	    (codeWrites-term (first (last terms)))
 	    (codeWrites-op (second terms)))))))
+
+(defun codeWrites-uop (uop)
+  (let ((op (unaryOP-uop uop)))
+    (cond ((=? op "-") (format NIL "neg~%"))
+	  ((=? op "~") (format NIL "not~%"))
+	  (T (format T "Moment : wrong uop ~a" uop)))))
 
 (defun codeWrites-term (obj)
   (let ((arg1 (term-arg1 obj))
@@ -1278,12 +1286,13 @@
   (and (token-p token)
        (member (token-value token) '("true" "false" "null" "this") :test #'equal)))
 
-(defun codeWrites-keywordConstant (token)
-  (when (keywordConstant-p token)
-    (cond ((=? token "true") (format NIL "push constant 0~%"))
-	  ((=? token "false") (format NIL "push constant -1~%"))
-	  ((=? token "null") (format NIL "push constant 0~%"))
-	  (T (format NIL "push this 0~%")))))
+(defun codeWrites-keywordConstant (kwd)
+  (let ((token (keywordConstant-kvalue kwd)))
+    (when (keywordConstant-p token)
+      (cond ((=? token "true") (format NIL "push constant 0~%"))
+	    ((=? token "false") (format NIL "push constant -1~%"))
+	    ((=? token "null") (format NIL "push constant 0~%"))
+	    (T (format NIL "push this 0~%"))))))
 
 (defun codeWrites-varName (varName)
   (let* ((name-token (varName-name varName))
@@ -1336,14 +1345,24 @@
   (let ((vname (letStatement-varName st))
 	(aexp (letStatement-array-expression st))
 	(exp (letStatement-expression st)))
+    (progn
     (append-string
      (codeWrites-expression exp)
-     (codeWrites-varName vname)
-     (when aexp
-       (append-string (codeWrites-expression aexp)
-		      (format NIL "add~%")))
-     (format NIL "pop pointer 1~%")
-     (format NIL "pop that 0~%"))))
+     (if aexp
+       (append-string
+	(codeWrites-expression aexp)
+	(let ((seg (get-seg-from-symbol-table (token-value (varName-name vname))))
+	      (index (get-index-from-symbol-table (token-value (varName-name vname)))))
+	  (format NIL "push ~a ~a~%" seg index))
+	(format NIL "add~%")
+	(format NIL "pop pointer 1 ~%")
+	(format NIL "pop that 0 ~%"))
+       (append-string
+	(let ((seg (get-seg-from-symbol-table (token-value (varName-name vname))))
+	      (index (get-index-from-symbol-table (token-value (varName-name vname)))))
+	  (format NIL "pop ~a ~a~%" seg index)))))))
+	)
+     
 
 
 ;;
@@ -1430,8 +1449,8 @@
   (let ((type (varDec-type vdc))
 	(vnames (varDec-varName vdc)))
     (dolist (v vnames)
-      (add-symbol-entry (varName-name v)
-			(types-type type)
+      (add-symbol-entry (token-value (varName-name v))
+			(token-value (types-type type))
 			"var" ))))
 
 
@@ -1448,6 +1467,7 @@
     (progn
       ;; need build method table
       (setf *current-method-name* funcname)
+      (setf *method-symbol-table* NIL)
       (when (string= (token-value cfm) "method")
 	;; need add this to the table
 	(add-symbol-entry "this" *current-class-name* "argument"))
@@ -1457,8 +1477,8 @@
 	(dolist (p (parameterList-type-varName plst))
 	  (let ((ty (first p))
 		(na (second p)))
-	    (add-symbol-entry (varName-name na)
-			      (types-type ty)
+	    (add-symbol-entry (token-value (varName-name na))
+			      (token-value (types-type ty))
 			      "argument"))))
 
       ;; processing local variables
@@ -1486,8 +1506,8 @@
 	(ty (classVarDec-type cvd))
 	(vns (classVarDec-varName cvd)))
     (dolist (v vns)
-      (add-symbol-entry (varName-name v)
-			(types-type ty)
+      (add-symbol-entry (token-value (varName-name v))
+			(token-value (types-type ty))
 			(token-value sf)))))
 
 
@@ -1531,3 +1551,75 @@
 (defun test-c ()
   (with-input-from-string (s test-class)
     (build-class s)))
+
+
+(defvar test-convert-to-bin "class Main {
+    
+    /**
+     * Initializes RAM[8001]..RAM[8016] to -1,
+     * and converts the value in RAM[8000] to binary.
+     */
+    function void main() {
+	    var int value;
+        do Main.fillMemory(8001, 16, -1); // sets RAM[8001]..RAM[8016] to -1
+        let value = Memory.peek(8000);    // reads a value from RAM[8000]
+        do Main.convert(value);           // performs the conversion
+        return;
+    }
+    
+    /** Converts the given decimal value to binary, and puts 
+     *  the resulting bits in RAM[8001]..RAM[8016]. */
+    function void convert(int value) {
+    	var int mask, position;
+    	var boolean loop;
+    	
+    	let loop = true;
+    	while (loop) {
+    	    let position = position + 1;
+    	    let mask = Main.nextMask(mask);
+    	
+    	    if (~(position > 16)) {
+    	
+    	        if (~((value & mask) = 0)) {
+    	            do Memory.poke(8000 + position, 1);
+       	        }
+    	        else {
+    	            do Memory.poke(8000 + position, 0);
+      	        }    
+    	    }
+    	    else {
+    	        let loop = false;
+    	    }
+    	}
+    	return;
+    }
+ 
+    /** Returns the next mask (the mask that should follow the given mask). */
+    function int nextMask(int mask) {
+    	if (mask = 0) {
+    	    return 1;
+    	}
+    	else {
+	    return mask * 2;
+    	}
+    }
+    
+    /** Fills 'length' consecutive memory locations with 'value',
+      * starting at 'startAddress'. */
+    function void fillMemory(int startAddress, int length, int value) {
+        while (length > 0) {
+            do Memory.poke(startAddress, value);
+            let length = length - 1;
+            let startAddress = startAddress + 1;
+        }
+        return;
+    }
+}")
+
+(defun test-test (strings build-func write-func)
+  (with-input-from-string (stream strings)
+    (let ((b (funcall build-func stream)))
+      (funcall write-func b))))
+
+(defun test-converttobin ()
+  (test-test test-convert-to-bin #'build-class #'codeWrites-class))
