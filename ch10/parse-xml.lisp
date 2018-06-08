@@ -1137,6 +1137,9 @@
 	(setf r (concatenate 'string r x)))
       r)))
 
+(defun append-string (&rest lst)
+  (append-string-1 lst))
+
 ;; symbol table
 (defstruct entry
   name
@@ -1168,7 +1171,7 @@
 (defun get-entry-from-stable (name)
   (let ((e (find-if #'(lambda (e) (string= name (entry-name e))) *method-symbol-table*)))
     (if e e
-	(find-if #'(lambda (e) (string= name (entry-name e)) *class-symbol-table*)))))
+	(find-if #'(lambda (e) (string= name (entry-name e))) *class-symbol-table*))))
 
 
 (defun get-new-index-from-stable (kind table)
@@ -1179,7 +1182,7 @@
 	  (setf index (+ 1 (entry-index x)))))
       index)))
 
-(defun get-seg-from-symbol-table (name)
+(defun get-seg-from-symbol-table(name)
   (let ((e (get-entry-from-stable name)))
     (when e
       (let ((kind (entry-kind e)))
@@ -1283,23 +1286,33 @@
 	  (T (format NIL "push this 0~%")))))
 
 (defun codeWrites-varName (varName)
-  (let* ((name (varName-name varName))
+  (let* ((name-token (varName-name varName))
+	 (name (token-value name-token))
 	 (seg (get-seg-from-symbol-table name))
 	 (index (get-index-from-symbol-table name)))
-  (format NIL "push ~a ~a~%" seg index)))
+    (if (and seg index)
+	(format NIL "push ~a ~a~%" seg index)
+	"")))
+
+(defun class-name? (name-token)
+  (let ((name (token-value name-token)))
+    (string= name (get-current-class-name))))
 
 (defun codeWrites-subroutineCall (sbr)
-  (let ((cvname (subroutineCall-classVarName sbr))
-	(sbname (subroutineCall-subroutineName sbr))
-	(exp (subroutineCall-expressionList sbr)))
+  (let* ((cvname (subroutineCall-classVarName sbr))
+	 (sbname-token (subroutineCall-subroutineName sbr))
+	 (sbname (subroutineName-name sbname-token))
+	 (expl (subroutineCall-expressionList sbr))
+	 (exp (expressionList-expression* expl)))
     (append-string
-      (if cvname (codeWrites-varName cvname) "")
+      (format NIL "// codeWrites subroutineCall IN~%")
+      (if cvname (codeWrites-varName (make-varName :name cvname)) "")
+      (format NIL "// start processing expressions ~%")
       (append-string-1 (mapcar #'(lambda (x) (codeWrites-expression x)) exp))
-      (if (class-name? cvname)
-	  (format NIL "call ~a.~a~%" (token-value cvname) (token-value sbname))
-	  (format NIL "call ~a.~a~%" (current-class-name) (token-value sbname))))))
-
-
+      (let ((len (length exp)))
+	(if cvname
+	    (format NIL "call ~a.~a ~a~%" (token-value cvname) (token-value sbname) len)
+	    (format NIL "call ~a.~a ~a~%" (get-current-class-name) (token-value sbname) len))))))
 ;;;
 ;;; statements
 ;;;
@@ -1392,7 +1405,9 @@
 ;;
 (defun codeWrites-doStatement (dst)
   (let ((sbcall (doStatement-subroutineCall dst)))
-    (codeWrites-subroutineCall sbcall)))
+    (append-string
+     (codeWrites-subroutineCall sbcall)
+     (format NIL "pop temp 0 ~%"))))
 
 ;;
 ;; return Statement
@@ -1424,20 +1439,95 @@
 ;; subroutineDec
 ;;
 (defun codeWrites-subroutineDec (sdc)
-  (let ((cfm (subroutineDec-con-fun-method sdc))
-	(vt (subroutineDec-void-type sdc))
-	(sname (subroutineDec-subroutineName sdc))
-	(sbody (subroutineDec-subroutineBody sdc))
-	(plst (subroutineDec-parameterList sdc)))
+  (let* ((cfm (subroutineDec-con-fun-method sdc))
+	 (vt (subroutineDec-void-type sdc))
+	 (sname (subroutineDec-subroutineName sdc))
+	 (sbody (subroutineDec-subroutineBody sdc))
+	 (plst (subroutineDec-parameterList sdc))
+	 (funcname (token-value (subroutineName-name sname))))
     (progn
-      (setf *current-method-name* (token-value sname))
-      (let* ((
-      
-			
-		       
-    
+      ;; need build method table
+      (setf *current-method-name* funcname)
+      (when (string= (token-value cfm) "method")
+	;; need add this to the table
+	(add-symbol-entry "this" *current-class-name* "argument"))
 
-	 
-    
-    
-    
+      ;; add parameter to symbol table
+      (when plst
+	(dolist (p (parameterList-type-varName plst))
+	  (let ((ty (first p))
+		(na (second p)))
+	    (add-symbol-entry (varName-name na)
+			      (types-type ty)
+			      "argument"))))
+
+      ;; processing local variables
+      (let ((vdcs (subroutineBody-varDec* sbody))
+	    (sts (subroutineBody-statements sbody)))
+	(progn
+	  (dolist (vdc vdcs)
+	    (codeWrites-varDec vdc))
+	  (append-string
+	   (let ((n 0))
+	     (dolist (vdc vdcs)
+	       (dolist (vn (varDec-varName vdc))
+		 (setf n (+ 1 n))))
+	     (format NIL "function ~a.~a ~a~%" *current-class-name* *current-method-name* n))
+	   (if (string= (token-value cfm) "method")
+	       (format NIL "push argument 0~%pop pointer 0~%")
+	       "")
+	   (codeWrites-statements sts)))))))
+
+;;
+;; classVarDec
+;;
+(defun codeWrites-classVarDec (cvd)
+  (let ((sf (classVarDec-static-field cvd))
+	(ty (classVarDec-type cvd))
+	(vns (classVarDec-varName cvd)))
+    (dolist (v vns)
+      (add-symbol-entry (varName-name v)
+			(types-type ty)
+			(token-value sf)))))
+
+
+;;
+;; class
+;;
+(defun codeWrites-class (cl)
+  (let ((cname (class-s-className cl))
+	(cvds (class-s-classVarDec* cl))
+	(sbds (class-s-subroutineDec* cl)))
+    (progn
+      ;; do init
+      (setf *current-class-name* (token-value (className-name cname)))
+      (setf *current-method-name* NIL)
+      (setf *class-symbol-table* NIL *method-symbol-table* NIL)
+      (dolist (cvd cvds)
+	(codeWrites-classVarDec cvd))
+      (append-string-1
+       (mapcar #'(lambda (sbd) (codeWrites-subroutineDec sbd))
+	       sbds)))))
+
+	   
+;;; TESTING CASES
+;;; 1. CLASS SEVEN
+(defvar test-class "class Main {
+
+   function void main() {
+      do Output.printInt(1 + (2 * 3));
+      return;
+   }
+
+}")
+
+(defun test-codeWrites-class ()
+  (progn
+    (setf *current-token* NIL *peek-token* NIL)
+    (with-input-from-string (stream test-class)
+      (let ((c (build-class stream)))
+	       (codeWrites-class c)))))
+
+(defun test-c ()
+  (with-input-from-string (s test-class)
+    (build-class s)))
