@@ -766,6 +766,7 @@
 (defun build-term (input-stream)
   (let ((sbc (build-subroutineCall input-stream)))
     (if sbc (progn
+
 	(make-term :arg1 sbc :arg2 NIL))
 	(let ((token (next input-stream)))
 	  (when (and (token-p token)
@@ -1289,8 +1290,8 @@
 (defun codeWrites-keywordConstant (kwd)
   (let ((token (keywordConstant-kvalue kwd)))
     (when (keywordConstant-p token)
-      (cond ((=? token "true") (format NIL "push constant 0~%"))
-	    ((=? token "false") (format NIL "push constant -1~%"))
+      (cond ((=? token "true") (format NIL "push constant 0~%not~%"))
+	    ((=? token "false") (format NIL "push constant 0~%"))
 	    ((=? token "null") (format NIL "push constant 0~%"))
 	    (T (format NIL "push this 0~%"))))))
 
@@ -1393,7 +1394,7 @@
      (format NIL "if-goto ~a~%" false-label)
      (codeWrites-statements ifst)
      (when ests
-       (format NIL "if-goto ~a~%" true-label))
+       (format NIL "goto ~a~%" true-label))
      (format NIL "label ~a~%" false-label)
      (when ests
        (codeWrites-statements ests))
