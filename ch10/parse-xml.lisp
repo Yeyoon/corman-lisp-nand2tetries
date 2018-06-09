@@ -844,7 +844,7 @@
 	(if (string= (token-value ntoken) "(")
 	    (make-subroutineCall
 	     :classVarName NIL
-	     :subroutineName token
+	     :subroutineName (make-subroutineName :name token)
 	     :expressionList (and (consume-one-token input-stream) 
 				  (let ((r (build-expressionList input-stream)))
 				    (progn (consume-one-token input-stream :value ")")
@@ -1105,11 +1105,11 @@
 (defun build-class-from-file (filename)
   (let* ((i (search "." filename))
 	 (temp (subseq filename 0 i))
-	 (ofile (concatenate 'string temp "-v.xml")))
+	 (ofile (concatenate 'string temp ".vm")))
     (with-open-file (out ofile :direction :output :if-exists :supersede)
       (format out "~a"
 	      (with-open-file (in filename :direction :input :if-does-not-exist nil)
-		(build-class in))))))
+		(codeWrites-class (build-class in)))))))
 
 
 (defun run (dir)
@@ -1193,6 +1193,12 @@
 	      ((string= kind "var") "local")
 	      (T (entry-kind e))))))))
 
+(defun get-type-from-stable (name)
+  "Get compound DATA type from the stable. class Name."
+  (let ((e (get-entry-from-stable name)))
+    (when e 
+      (entry-type e))))
+
 (defun get-index-from-symbol-table (name)
   (let ((e (get-entry-from-stable name)))
     (when e
@@ -1262,7 +1268,7 @@
 	    ((=? v "/") (format NIL "call Math.divide 2 ~%"))
 	    ((=? v "|") (format NIL "or~%"))
 	    ((=? v "&") (format NIL "and~%"))
-	    ((=? v "<") (format NIL "lg~%"))
+	    ((=? v "<") (format NIL "lt~%"))
 	    ((=? v ">") (format NIL "gt~%"))
 	    ((=? v "=") (format NIL "eq~%"))
 	    (T (format T "wrong op ~a~%" v))))))
@@ -1293,7 +1299,7 @@
       (cond ((=? token "true") (format NIL "push constant 0~%not~%"))
 	    ((=? token "false") (format NIL "push constant 0~%"))
 	    ((=? token "null") (format NIL "push constant 0~%"))
-	    (T (format NIL "push this 0~%"))))))
+	    (T (format NIL "push pointer 0~%"))))))
 
 (defun codeWrites-varName (varName)
   (let* ((name-token (varName-name varName))
@@ -1316,13 +1322,31 @@
 	 (exp (expressionList-expression* expl)))
     (append-string
       (format NIL "// codeWrites subroutineCall IN~%")
-      (if cvname (codeWrites-varName (make-varName :name cvname)) "")
       (format NIL "// start processing expressions ~%")
       (append-string-1 (mapcar #'(lambda (x) (codeWrites-expression x)) exp))
       (let ((len (length exp)))
 	(if cvname
-	    (format NIL "call ~a.~a ~a~%" (token-value cvname) (token-value sbname) len)
-	    (format NIL "call ~a.~a ~a~%" (get-current-class-name) (token-value sbname) len))))))
+	    (let ((this (get-type-from-stable (token-value cvname))))
+	      (if this
+		  (append-string
+		   (format NIL "push ~a ~a~%"
+			   (get-seg-from-symbol-table (token-value cvname))
+			   (get-index-from-symbol-table (token-value cvname)))
+		   (format NIL "call ~a.~a ~a~%" 
+			   (get-type-from-stable (token-value cvname)) 
+			   (token-value sbname) 
+			   (+ 1 len)))
+		  ;; means call class functon (not method)
+		  (format NIL "call ~a.~a ~a~%"
+			  (token-value cvname)
+			  (token-value sbname)
+			  len)))
+	    (append-string
+	     (format NIL "push pointer 0 ~%")
+	     (format NIL "call ~a.~a ~a~%" 
+		     (get-current-class-name) 
+		     (token-value sbname)
+		     (+ 1 len))))))))
 ;;;
 ;;; statements
 ;;;
@@ -1458,7 +1482,7 @@
 ;;
 ;; subroutineDec
 ;;
-(defun codeWrites-subroutineDec (sdc)
+(defun codeWrites-subroutineDec (sdc size-of-class)
   (let* ((cfm (subroutineDec-con-fun-method sdc))
 	 (vt (subroutineDec-void-type sdc))
 	 (sname (subroutineDec-subroutineName sdc))
@@ -1494,9 +1518,15 @@
 	       (dolist (vn (varDec-varName vdc))
 		 (setf n (+ 1 n))))
 	     (format NIL "function ~a.~a ~a~%" *current-class-name* *current-method-name* n))
-	   (if (string= (token-value cfm) "method")
-	       (format NIL "push argument 0~%pop pointer 0~%")
-	       "")
+	   (cond ((string= (token-value cfm) "method")
+		  (format NIL "push argument 0~%pop pointer 0~%"))
+		 ((string= (token-value cfm) "constructor")
+		  ;; for create this for class
+		  (append-string
+		   (format NIL "push constant ~a~%" size-of-class)
+		   (format NIL "call Memory.alloc 1~%")
+		   (format NIL "pop pointer 0~%")))
+		 (T ""))
 	   (codeWrites-statements sts)))))))
 
 ;;
@@ -1511,6 +1541,14 @@
 			(token-value (types-type ty))
 			(token-value sf)))))
 
+
+(defun count-num (classVarDec*)
+  (let ((n 0))
+    (progn
+      (dolist (cvd classVarDec*)
+	(dolist (c (classVarDec-varName cvd))
+	  (setf n (+ 1 n))))
+      n)))
 
 ;;
 ;; class
@@ -1527,7 +1565,7 @@
       (dolist (cvd cvds)
 	(codeWrites-classVarDec cvd))
       (append-string-1
-       (mapcar #'(lambda (sbd) (codeWrites-subroutineDec sbd))
+       (mapcar #'(lambda (sbd) (codeWrites-subroutineDec sbd (count-num cvds)))
 	       sbds)))))
 
 	   
@@ -1624,3 +1662,12 @@
 
 (defun test-converttobin ()
   (test-test test-convert-to-bin #'build-class #'codeWrites-class))
+
+(defun test-square ()
+  (run "c:/Users/Moment/Desktop/the-elements-of-computer-systems/nand2tetris/nand2tetris/projects/11/Square"))
+
+
+
+(defun class-square ()
+  (with-open-file (in "c:/Users/Moment/Desktop/the-elements-of-computer-systems/nand2tetris/nand2tetris/projects/11/Square/Square.jack")
+    (build-class in)))
