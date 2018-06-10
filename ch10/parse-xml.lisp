@@ -1350,9 +1350,7 @@
 	 (expl (subroutineCall-expressionList sbr))
 	 (exp (expressionList-expression* expl)))
     (append-string
-      (format NIL "// codeWrites subroutineCall IN~%")
-      (format NIL "// start processing expressions ~%")
-      (append-string-1 (mapcar #'(lambda (x) (codeWrites-expression x)) exp))
+
       (let ((len (length exp)))
 	(if cvname
 	    (let ((this (get-type-from-stable (token-value cvname))))
@@ -1361,17 +1359,24 @@
 		   (format NIL "push ~a ~a~%"
 			   (get-seg-from-symbol-table (token-value cvname))
 			   (get-index-from-symbol-table (token-value cvname)))
+		   (append-string-1 
+		    (mapcar #'(lambda (x) (codeWrites-expression x)) exp))
 		   (format NIL "call ~a.~a ~a~%" 
 			   (get-type-from-stable (token-value cvname)) 
 			   (token-value sbname) 
 			   (+ 1 len)))
 		  ;; means call class functon (not method)
-		  (format NIL "call ~a.~a ~a~%"
-			  (token-value cvname)
-			  (token-value sbname)
-			  len)))
+		  (append-string
+		   (append-string-1 
+		    (mapcar #'(lambda (x) (codeWrites-expression x)) exp))
+		   (format NIL "call ~a.~a ~a~%"
+			   (token-value cvname)
+			   (token-value sbname)
+			   len))))
 	    (append-string
 	     (format NIL "push pointer 0 ~%")
+	     (append-string-1 
+	      (mapcar #'(lambda (x) (codeWrites-expression x)) exp))
 	     (format NIL "call ~a.~a ~a~%" 
 		     (get-current-class-name) 
 		     (token-value sbname)
@@ -1576,7 +1581,9 @@
     (progn
       (dolist (cvd classVarDec*)
 	(dolist (c (classVarDec-varName cvd))
-	  (setf n (+ 1 n))))
+	  (when (string= (token-value 
+			  (classVarDec-static-field cvd)) "field")
+	    (setf n (+ 1 n)))))
       n)))
 
 ;;
@@ -1703,3 +1710,6 @@
 
 (defun test-average ()
   (run "c:/Users/Moment/Desktop/the-elements-of-computer-systems/nand2tetris/nand2tetris/projects/11/Average"))
+
+(defun test-pon ()
+  (run "c:/Users/Moment/Desktop/the-elements-of-computer-systems/nand2tetris/nand2tetris/projects/11/Pong"))
