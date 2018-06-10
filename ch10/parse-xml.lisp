@@ -1234,13 +1234,24 @@
 	  ((=? op "~") (format NIL "not~%"))
 	  (T (format T "Moment : wrong uop ~a" uop)))))
 
+(defun codeWrites-array (a index)
+  (let* ((name (token-value (varName-name a)))
+	 (seg (get-seg-from-symbol-table name))
+	 (i (get-index-from-symbol-table name)))
+    (append-string
+     (codeWrites-expression index)
+     (format NIL "push ~a ~a~%" seg i)
+     (format NIL "add~%")
+     (format NIL "pop pointer 1~%")
+     (format NIL "push that 0 ~%"))))
+
 (defun codeWrites-term (obj)
   (let ((arg1 (term-arg1 obj))
 	(arg2 (term-arg2 obj)))
     (if arg2
 	(if (varName-p arg1)
 	    ;; varName [xxx]
-	    (codeWrite-array arg1 arg2)
+	    (codeWrites-array arg1 arg2)
 	    (append-string
 	      (codeWrites-term arg2)
 	      (codeWrites-uop arg1)))
@@ -1287,8 +1298,26 @@
 
 (defun codeWrites-stringConstant (token)
   (when (stringConstant-p token)
-    (format NIL "push string Constant ~a~%" (token-value token))))
+    (let* ((str (token-value token))
+	   (len (length str)))
+      (append-string
+       (format NIL "push constant ~a~%" len)
+       (format NIL "call String.new 1~%")
+       (let ((r ""))
+	 (do ((i 0 (+ 1 i)))
+	     ((>= i len) r)
+	   (setf r (concatenate 'string 
+				r
+				(format NIL 
+					"push constant ~a~%"
+					(char-code 
+					 (char str i)))
+				(format NIL
+					"call String.appendChar 2~%"))))
+	 r)))))
 
+	 
+    
 (defun keywordConstant-p (token)
   (and (token-p token)
        (member (token-value token) '("true" "false" "null" "this") :test #'equal)))
@@ -1671,3 +1700,6 @@
 (defun class-square ()
   (with-open-file (in "c:/Users/Moment/Desktop/the-elements-of-computer-systems/nand2tetris/nand2tetris/projects/11/Square/Square.jack")
     (build-class in)))
+
+(defun test-average ()
+  (run "c:/Users/Moment/Desktop/the-elements-of-computer-systems/nand2tetris/nand2tetris/projects/11/Average"))
