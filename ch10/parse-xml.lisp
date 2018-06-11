@@ -1147,6 +1147,7 @@
 
 (defparameter *class-symbol-table* NIL)
 (defparameter *method-symbol-table* NIL)
+(defparameter *static-table* NIL) ;; store for static part
 
 (defparameter *current-method-name* NIL)
 (defparameter *current-class-name* NIL)
@@ -1163,19 +1164,29 @@
 (defun get-current-class-name ()
   *current-class-name*)
 
-(defun add-entry-to-stable (entry table)
-  (if table
-      (setf *method-symbol-table* (append *method-symbol-table* (list entry)))
-      (setf *class-symbol-table* (append *class-symbol-table* (list entry)))))
+(defun add-entry-to-stable (entry &optional static-method-class)
+  (cond ((equal static-method-class 'static)
+	 (setf *static-table* (append *static-table* (list entry))))
+	((equal static-method-class 'method)
+         (setf *method-symbol-table* (append *method-symbol-table* (list entry))))
+	(T
+	 (setf *class-symbol-table* (append *class-symbol-table* (list entry))))))
 
 (defun get-entry-from-stable (name)
   (let ((e (find-if #'(lambda (e) (string= name (entry-name e))) *method-symbol-table*)))
     (if e e
-	(find-if #'(lambda (e) (string= name (entry-name e))) *class-symbol-table*))))
+	(let ((ce (find-if #'(lambda (e) (string= name (entry-name e))) *class-symbol-table*)))
+	  (if ce ce
+	      (find-if #'(lambda (e)
+			   (string= name (entry-name e)))
+		       *static-table*))))))
 
 
-(defun get-new-index-from-stable (kind table)
-  (let ((index 0))
+(defun get-new-index-from-stable (kind &optional ptable)
+  (let ((index 0)
+	(table (if (equal ptable 'static) *static-table*
+		   (if (equal ptable 'method) *method-symbol-table*
+		       *class-symbol-table*))))
     (progn
       (dolist (x table)
 	(when (string= (entry-kind x) kind)
@@ -1183,15 +1194,12 @@
       index)))
 
 (defun get-seg-from-symbol-table(name)
-  (progn
-    (pprint *method-symbol-table*)
-    (pprint *class-symbol-table*)
   (let ((e (get-entry-from-stable name)))
     (when e
       (let ((kind (entry-kind e)))
 	(cond ((string= kind "field") "this")
 	      ((string= kind "var") "local")
-	      (T (entry-kind e))))))))
+	      (T (entry-kind e)))))))
 
 (defun get-type-from-stable (name)
   "Get compound DATA type from the stable. class Name."
@@ -1205,16 +1213,17 @@
       (entry-index e))))
 
 (defun add-symbol-entry (name type kind)
-  (let* ((table (if *current-method-name* 
-		    *method-symbol-table*
-		    *class-symbol-table*))
+  (let* ((table (if (string= kind "static")
+		    'static
+		    (when *current-method-name* 
+			'method)))
 	 (index (get-new-index-from-stable kind table)))
     (add-entry-to-stable
      (make-entry :name name
 		 :type type
 		 :kind kind
 		 :index index)
-     *current-method-name*)))
+     table)))
     
 
 (defun codeWrites-expression (obj)
@@ -1713,3 +1722,6 @@
 
 (defun test-pon ()
   (run "F:/nand2tetris/nand2tetris/projects/11/Pong"))
+
+(defun test-carray ()
+  (run "F:/nand2tetris/nand2tetris/projects/11/ComplexArrays"))
