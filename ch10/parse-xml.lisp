@@ -1712,4 +1712,4 @@
   (run "c:/Users/Moment/Desktop/the-elements-of-computer-systems/nand2tetris/nand2tetris/projects/11/Average"))
 
 (defun test-pon ()
-  (run "c:/Users/Moment/Desktop/the-elements-of-computer-systems/nand2tetris/nand2tetris/projects/11/Pong"))
+  (run "F:/nand2tetris/nand2tetris/projects/11/Pong"))
